@@ -10,7 +10,8 @@ A single `AGENTS.md` drives shared context across all supported tools, and a por
 .
 ├── AGENTS.md              # Shared agent instructions (context, code discipline, tool usage)
 ├── deploy/
-│   └── install.sh         # Symlinks AGENTS.md & skills/ into ~/.codex and ~/.opencode
+│   ├── install.sh         # Symlinks AGENTS.md & skills/ into tool config dirs (POSIX)
+│   └── install.ps1        # Same as above (PowerShell / Windows)
 └── skills/
     ├── alignment-gate/           # Pre-implementation contract verification
     ├── generate-godot-uids/      # Godot ResourceUID generator (uid://...)
@@ -38,7 +39,22 @@ git clone https://github.com/fractaal/fractal-ai.git ~/.fractal-ai
 ~/.fractal-ai/deploy/install.sh
 ```
 
-The install script symlinks `AGENTS.md` and `skills/` into `~/.codex` and `~/.opencode`, backing up any existing files first.
+On Windows (PowerShell — requires Developer Mode or admin):
+
+```powershell
+git clone https://github.com/fractaal/fractal-ai.git "$HOME\.fractal-ai"
+& "$HOME\.fractal-ai\deploy\install.ps1"
+```
+
+The install scripts symlink into the following locations, backing up any existing files first:
+
+| Source | Target |
+|---|---|
+| `AGENTS.md` | `~/.codex/AGENTS.md` |
+| `AGENTS.md` | `~/.opencode/AGENTS.md` |
+| `AGENTS.md` | `~/.claude/CLAUDE.md` |
+| `skills/` | `~/.codex/skills` |
+| `skills/` | `~/.opencode/skills` |
 
 ## License
 
