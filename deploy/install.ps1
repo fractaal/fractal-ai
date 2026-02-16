@@ -52,4 +52,5 @@ if (Test-Path -Path $agentsSource -PathType Leaf) {
 if (Test-Path -Path $skillsSource -PathType Container) {
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.codex') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'skills')
+    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.claude') 'skills')
 }

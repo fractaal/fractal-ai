@@ -55,6 +55,7 @@ The install scripts symlink into the following locations, backing up any existin
 | `AGENTS.md` | `~/.claude/CLAUDE.md` |
 | `skills/` | `~/.codex/skills` |
 | `skills/` | `~/.opencode/skills` |
+| `skills/` | `~/.claude/skills` |
 
 ## License
 

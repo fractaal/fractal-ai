@@ -37,4 +37,5 @@ fi
 if [[ -d "$skills_source" ]]; then
   link_item "$skills_source" "$HOME/.codex/skills"
   link_item "$skills_source" "$HOME/.opencode/skills"
+  link_item "$skills_source" "$HOME/.claude/skills"
 fi
