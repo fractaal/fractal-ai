@@ -31,6 +31,7 @@ skills_source="$FRACTAL_AI_HOME/skills"
 if [[ -f "$agents_source" ]]; then
   link_item "$agents_source" "$HOME/.codex/AGENTS.md"
   link_item "$agents_source" "$HOME/.opencode/AGENTS.md"
+  link_item "$agents_source" "$HOME/.claude/CLAUDE.md"
 fi
 
 if [[ -d "$skills_source" ]]; then
