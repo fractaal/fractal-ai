@@ -1,6 +1,6 @@
 ---
-name: obsidian-scratchpad-context
-description: Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat context, decisions, and implementation details across sessions and tools. Use for almost any non-trivial interaction (planning, code review, debugging, feature work, bugfixes) and especially after significant exchanges, before/after changes, after tests/reviews, and at session end; default to the daily scratchpad Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md (create if missing) via Obsidian tools.
+name: engineering-logs
+description: INVOKE/LOAD *NEARLY ALWAYS.* Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat context, decisions, and implementation details across sessions and tools. Use for almost any non-trivial interaction (planning, code review, debugging, feature work, bugfixes) and especially after significant exchanges, before/after changes, after tests/reviews, and at session end; default to the daily scratchpad Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md (create if missing) via Obsidian tools. KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", etc.
 ---
 
 # Obsidian Scratchpad Context

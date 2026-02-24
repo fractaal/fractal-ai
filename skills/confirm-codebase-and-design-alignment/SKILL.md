@@ -1,9 +1,9 @@
 ---
-name: alignment-gate
-description: Before implementing a feature, verify the request against existing system contracts, prior decisions, and codebase intent. If misaligned, surface the conflict early and propose alternatives.
+name: confirm-codebase-and-design-alignment
+description: INVOKE/LOAD WHEN IMPLEMENTING A NEW FEATURE. WHY: Verify the request against existing system contracts, prior decisions, and codebase intent. If misaligned, surface the conflict early and propose alternatives.
 ---
 
-# Alignment Gate
+# Confirming Codebase and Design Alignment
 
 ## Overview
 
@@ -12,6 +12,7 @@ Prevent implementation drift by checking that a requested change fits the system
 ## When to Use
 
 Use this skill whenever:
+
 - A request alters control/data flow (e.g., return data from tools, make X synchronous, change API semantics).
 - A request touches a core contract (tool calling, async behavior, state ownership, determinism).
 - A request might conflict with existing design decisions or architecture.
@@ -42,11 +43,13 @@ Use this skill whenever:
 ## Examples
 
 Mismatch example:
+
 - Request: Add a tool that returns data immediately to a script.
 - Conflict: Tools are async; scripts will not see results the same tick.
 - Options: Put data in ctx, or use next-tick read pattern.
 - Ask for choice.
 
 Aligned example:
+
 - Request: Expose a new sensor field in ctx.
 - Fits: Data belongs in ctx and is consumed synchronously.
