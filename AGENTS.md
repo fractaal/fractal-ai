@@ -93,6 +93,10 @@ Follow instructions previously defined above:
 
 # Skill Usage
 
-## obsidian-scratchpad-context
+## write-engineering-logs
 
-As the skill says, this is supposed to be your working document where you write live "doctor's notes" as you go and work on something. This is the one skill you should almost always keep active, if not always.
+The write half of the engineering logs pair. This is your working document where you write live "doctor's notes" as you go and work on something. This is the one skill you should almost always keep active, if not always.
+
+## read-engineering-logs
+
+The read half of the engineering logs pair. Use this to search and recall past scratchpad context when starting a session on a familiar topic, picking up where you left off, or when the user asks about prior work. Runs `qmd` (local hybrid search) via Bash CLI.

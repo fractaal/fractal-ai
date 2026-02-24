@@ -14,7 +14,8 @@ A single `AGENTS.md` drives shared context across all supported tools, and a por
 │   └── install.ps1        # Same as above (PowerShell / Windows)
 └── skills/
     ├── confirm-codebase-and-design-alignment/  # Pre-implementation contract verification
-    ├── engineering-logs/                       # Living "doctor's notes" in Obsidian
+    ├── read-engineering-logs/                   # Search & recall past scratchpad context via qmd
+    ├── write-engineering-logs/                  # Living "doctor's notes" in Obsidian
     ├── generate-godot-uids/                    # Godot ResourceUID generator (uid://...)
     ├── git-commit-convention/                  # Atomic, typed commit workflow ([type][name] format)
     └── godot-dotnet-build/                     # Godot C# project build & verification
@@ -25,7 +26,8 @@ A single `AGENTS.md` drives shared context across all supported tools, and a por
 | Skill | Description |
 |---|---|
 | **confirm-codebase-and-design-alignment** | Verify a requested change against existing system contracts and design intent before implementing. Surfaces mismatches early and proposes aligned alternatives. |
-| **engineering-logs** | Maintains a chronological, exhaustive log in Obsidian scratchpads — decisions, implementation details, commands, and outcomes — to preserve context across sessions. |
+| **read-engineering-logs** | Searches and retrieves past Obsidian scratchpad context using qmd (local hybrid search). Synthesizes prior decisions, implementation details, and session history for recontextualization. |
+| **write-engineering-logs** | Maintains a chronological, exhaustive log in Obsidian scratchpads — decisions, implementation details, commands, and outcomes — to preserve context across sessions. |
 | **generate-godot-uids** | CLI tool that generates valid Godot `uid://` strings using a CSPRNG-backed 64-bit value encoded in base36. |
 | **git-commit-convention** | Standardized atomic commit workflow. Stages intentionally, partitions by concern, and formats messages as `[type][name] details`. |
 | **godot-dotnet-build** | Runs `dotnet build` against a Godot `.csproj` to verify C# compilation after changes. |
