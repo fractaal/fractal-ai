@@ -1,13 +1,13 @@
 ---
-name: engineering-logs
-description: INVOKE/LOAD *NEARLY ALWAYS.* Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat context, decisions, and implementation details across sessions and tools. Use for almost any non-trivial interaction (planning, code review, debugging, feature work, bugfixes) and especially after significant exchanges, before/after changes, after tests/reviews, and at session end; default to the daily scratchpad Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md (create if missing) via Obsidian tools. KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", etc.
+name: write-engineering-logs
+description: INVOKE/LOAD *NEARLY ALWAYS* WHEN WORKING ON ANY NON-TRIVIAL TASK. WHY: Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat context, decisions, and implementation details across sessions and tools. This is the WRITE half — use for logging during planning, code review, debugging, feature work, and bugfixes. Default to the daily scratchpad Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md (create if missing) via Obsidian tools. For READING/SEARCHING past logs, use the companion skill read-engineering-logs. KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", "write notes", "doctor's notes".
 ---
 
-# Obsidian Scratchpad Context
+# Write Engineering Logs
 
 ## Overview
 
-Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the full conversation: issue, discussion, decisions, and implementation as it happens.
+Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the full conversation: issue, discussion, decisions, and implementation as it happens. This skill is write-only — it appends to scratchpads but does not search or retrieve past entries. For recall and search, see `read-engineering-logs`.
 
 ## Workflow
 
