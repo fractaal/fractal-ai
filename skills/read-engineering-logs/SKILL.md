@@ -139,6 +139,7 @@ When self-invoking to recontextualize at the start of a session or mid-conversat
 
 ## Rules
 
+- **NEVER run multiple `qmd` commands in parallel.** Always run them sequentially (one at a time, waiting for each to finish before starting the next). Parallel `qmd` invocations saturate CPU/memory and will freeze the machine. This applies to all tiers — even if you need multiple searches (e.g., Tier 1 + Tier 3 combined), run them one after another, never concurrently.
 - Never fabricate or hallucinate scratchpad content. Only surface what `qmd` actually returns.
 - Always attribute excerpts to their source file and date.
 - When multiple scratchpads cover the same topic across dates, present them chronologically to show how the work evolved.
