@@ -44,18 +44,13 @@ After bootstrap, the collection persists across sessions. On subsequent runs, ch
 
 ## Pre-Search Freshness
 
-Before every search operation:
+Before every search operation (any tier), always run:
 
-1. Re-index changed files (fast — filesystem scan only):
-   ```bash
-   qmd update
-   ```
-2. If about to use hybrid search (`qmd query`), also update embeddings:
-   ```bash
-   qmd embed
-   ```
+```bash
+qmd update && qmd embed
+```
 
-This ensures results reflect the latest writes, including any made earlier in the current session by `write-engineering-logs`.
+Both are fast no-ops when nothing has changed (~1s total). This ensures results always reflect the latest writes, including any made earlier in the current session by `write-engineering-logs`.
 
 ## Search Strategy
 
@@ -90,7 +85,7 @@ qmd search "SphFluidSolver pressure normalization" --md -n 10 -c scratchpads
 
 ### Tier 3: Hybrid Search (BM25 + Vector + Re-ranking)
 
-Use for conceptual, semantic, or open-ended questions where keyword matching alone would miss relevant context. Requires `qmd embed` to have been run.
+Use for conceptual, semantic, or open-ended questions where keyword matching alone would miss relevant context.
 
 ```bash
 qmd query "decision on fluid simulation architecture and jitter mitigation" --md -n 5 -c scratchpads
