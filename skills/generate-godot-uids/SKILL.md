@@ -1,6 +1,6 @@
 ---
 name: generate-godot-uids
-description: Generate valid Godot ResourceUID strings via CLI and apply them when creating or editing Godot resources (scenes .tscn, resources .tres/.res, .import files, .uid sidecars, project.godot run/main_scene, and ext_resource/metadata uid fields). Use whenever a uid="uid://..." value or .uid file is required, or when replacing placeholder/handmade IDs.
+description: INVOKE/LOAD WHEN CREATING OR MODIFYING .tscn FILES IN GODOT. Generate valid Godot ResourceUID strings via CLI and apply them when creating or editing Godot resources (scenes .tscn, resources .tres/.res, .import files, .uid sidecars, project.godot run/main_scene, and ext_resource/metadata uid fields). Use whenever a uid="uid://..." value or .uid file is required, or when replacing placeholder/handmade IDs.
 ---
 
 # Generate Godot UIDs

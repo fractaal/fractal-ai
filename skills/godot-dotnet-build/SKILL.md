@@ -1,6 +1,6 @@
 ---
 name: godot-dotnet-build
-description: Build and verify Godot C# projects with dotnet build. Use when asked to build/compile/verify a Godot project, check C# compilation after changes, or validate before committing.
+description: INVOKE/LOAD WHEN DONE IMPLEMENTING SOMETHING IN GODOT. Build and verify Godot C# projects with dotnet build. Use when asked to build/compile/verify a Godot project, check C# compilation after changes, or validate before committing.
 ---
 
 # Godot Dotnet Build
