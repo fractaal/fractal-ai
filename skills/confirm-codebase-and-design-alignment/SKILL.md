@@ -1,6 +1,10 @@
 ---
 name: confirm-codebase-and-design-alignment
-description: INVOKE/LOAD BEFORE IMPLEMENTING ANY SIGNIFICANT CODE CHANGE (SUCH AS A NEW FEATURE). WHY: Verify the request against existing system contracts, prior decisions, and codebase intent. If misaligned, surface the conflict early and propose alternatives.
+description: >-
+  INVOKE/LOAD BEFORE IMPLEMENTING ANY SIGNIFICANT CODE CHANGE (SUCH AS A NEW
+  FEATURE). WHY: Verify the request against existing system contracts, prior
+  decisions, and codebase intent. If misaligned, surface the conflict early and
+  propose alternatives.
 ---
 
 # Confirming Codebase and Design Alignment

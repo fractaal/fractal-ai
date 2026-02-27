@@ -1,6 +1,15 @@
 ---
 name: read-engineering-logs
-description: INVOKE/LOAD WHEN THE USER ASKS TO RECALL PAST WORK, PICK UP WHERE THEY LEFT OFF, OR WHEN STARTING A SESSION ON A TOPIC THAT LIKELY HAS PRIOR LOGS. Also invoke when the user says things like "remember when we did X?", "what was the decision on...", "find my notes about...", "what happened with...", or any variation of recalling/searching past engineering context. Uses qmd (local hybrid search engine) to search Obsidian scratchpads via Bash CLI. This is the READ half — for writing new logs, use write-engineering-logs. KEYWORDS: "remember", "recall", "find notes", "prior context", "pick up where we left off", "what did we decide", "past logs", "search scratchpads".
+description: >-
+  INVOKE/LOAD WHEN THE USER ASKS TO RECALL PAST WORK, PICK UP WHERE THEY LEFT
+  OFF, OR WHEN STARTING A SESSION ON A TOPIC THAT LIKELY HAS PRIOR LOGS. Also
+  invoke when the user says things like "remember when we did X?", "what was
+  the decision on...", "find my notes about...", "what happened with...", or
+  any variation of recalling/searching past engineering context. Uses qmd
+  (local hybrid search engine) to search Obsidian scratchpads via Bash CLI.
+  This is the READ half — for writing new logs, use write-engineering-logs.
+  KEYWORDS: "remember", "recall", "find notes", "prior context", "pick up where
+  we left off", "what did we decide", "past logs", "search scratchpads".
 ---
 
 # Read Engineering Logs

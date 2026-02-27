@@ -1,6 +1,15 @@
 ---
 name: write-engineering-logs
-description: INVOKE/LOAD *NEARLY ALWAYS* WHEN WORKING ON ANY NON-TRIVIAL TASK. WHY: Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat context, decisions, and implementation details across sessions and tools. This is the WRITE half — use for logging during planning, code review, debugging, feature work, and bugfixes. Default to the daily scratchpad Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md (create if missing) via Obsidian tools. For READING/SEARCHING past logs, use the companion skill read-engineering-logs. KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", "write notes", "doctor's notes".
+description: >-
+  INVOKE/LOAD *NEARLY ALWAYS* WHEN WORKING ON ANY NON-TRIVIAL TASK. WHY:
+  Maintain a comprehensive, ongoing log in Obsidian scratchpads to preserve chat
+  context, decisions, and implementation details across sessions and tools. This
+  is the WRITE half — use for logging during planning, code review, debugging,
+  feature work, and bugfixes. Default to the daily scratchpad
+  Scratchpads/YYYY-MM-DD-topic-name.md (create if missing) via Obsidian tools.
+  For READING/SEARCHING past logs, use the companion skill read-engineering-logs.
+  KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", "write notes",
+  "doctor's notes".
 ---
 
 # Write Engineering Logs

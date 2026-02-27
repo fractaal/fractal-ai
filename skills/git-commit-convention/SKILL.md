@@ -1,6 +1,12 @@
 ---
 name: git-commit-convention
-description: INVOKE/LOAD WHEN USING GIT! WHY: Prepare and create git commits using a standardized commit message format. Use when the user asks to commit (e.g., “ok please commit our changes”) and you must stage changes intentionally, keep commits atomic, and format messages as [type][name] details. If invoked with little or no scope/context, treat the entire working tree as in-scope and clean it by producing multiple relevant atomic commits.
+description: >-
+  INVOKE/LOAD WHEN USING GIT! WHY: Prepare and create git commits using a
+  standardized commit message format. Use when the user asks to commit (e.g.,
+  “ok please commit our changes”) and you must stage changes intentionally, keep
+  commits atomic, and format messages as [type][name] details. If invoked with
+  little or no scope/context, treat the entire working tree as in-scope and
+  clean it by producing multiple relevant atomic commits.
 ---
 
 # Git Commit Conventions
