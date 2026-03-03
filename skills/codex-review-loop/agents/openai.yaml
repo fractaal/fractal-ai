@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Review Loop"
+  short_description: "Run an iterative PR review-fix loop with Codex comments"
+  default_prompt: "Run the codex review loop for this PR until no valid Codex comments remain."
