@@ -36,11 +36,31 @@ The `codebase-retrieval` tool is a world-class context engine, powered by RAG on
 
 TLDR: Use `codebase-retrieval` for semantic and problem-domain search. Use typical CLI tools like rg/grep for mechanical substring/file name search.
 
+# Code Is a Liability
+
+Every line of code is a line that can break, a line someone must understand, a line that encodes assumptions that can go stale. **We strive to write less code, not more.** The goal is to *eliminate problems*, not to *handle them at every downstream point*.
+
+## The Desperation Smell
+
+If a fix is getting louder and more desperate — more flags, more retries, more nested exception handlers, more “oh but what if THIS edge case” — **stop**. That is a smell. It means you are *fighting* a problem instead of *eliminating* it. The right fix should make things **quieter**, not louder.
+
+Before fixing N symptoms, always ask: **do these share a root cause, and can I eliminate that cause more simply than handling N exceptions?** If 10 lines can replace 200 lines of defensive handling by removing the problem at its source, that is always the correct choice.
+
+> *”The more desperate each line of code makes something out to be, the more scared you should be of that solution.”*
+
+## KISS
+
+- Simpler is better. Always.
+- If you're adding complexity, you need a concrete reason — not a hypothetical one.
+- Three similar lines of code are better than a premature abstraction.
+- One function that sidesteps a problem beats five functions that catch, retry, and recover from it.
+- When in doubt, delete code rather than adding more.
+
 # Code Writing Discipline / Implementation Discipline
 
 CORE MINDSET: **DO NOT HALF-ASS ANYTHING.**
 
-If you are creating or modifying code, do it **fully and properly**, or **not at all**.  
+If you are creating or modifying code, do it **fully and properly**, or **not at all**.
 Avoid placeholders, shortcuts, or “just-enough” implementations. Every line must be deliberate, explicit, and complete.
 
 ---
