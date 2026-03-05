@@ -120,3 +120,5 @@ The write half of the engineering logs pair. This is your working document where
 ## read-engineering-logs
 
 The read half of the engineering logs pair. Use this to search and recall past scratchpad context when starting a session on a familiar topic, picking up where you left off, or when the user asks about prior work. Runs `qmd` (local hybrid search) via Bash CLI.
+
+**ALWAYS remember to write to engineering logs as often as you can.** SIMILARLY, if something confuses you or you need context or the codebase is unfamiliar, READING engineering logs will help.**
