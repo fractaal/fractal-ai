@@ -23,7 +23,7 @@ You are already running inside a tmux pane. The tmux server socket is live and y
 
 - You must be inside a tmux session (`$TMUX` is set). Verify: `echo $TMUX_PANE`.
 - `tmux` is on `$PATH`.
-- For subagent workers: `claude` CLI is on `$PATH`.
+- For subagent workers: your chosen agent CLI is on `$PATH` (e.g. `claude`, `codex`, `sgpt`).
 
 ---
 
@@ -96,29 +96,30 @@ tmux kill-pane -t "$PANE"
 
 ---
 
-## Pattern 2 — Claude Subagent Worker
+## Pattern 2 — AI Subagent Worker
 
-Spawn a `claude` CLI process in a pane, give it a task via stdin/heredoc, and read the result.
+Spawn an agent CLI process in a pane, give it a task, and read the result.
+`spawn_agent.sh` handles the full lifecycle. Use `--agent-cmd` to select the agent
+(defaults to `claude -p`). Prompts are passed via a `mktemp` file — no quoting hell.
+The output file is also `mktemp`-generated unless you supply `--out`.
 
 ```bash
-# 1. Spawn (narrow vertical split so it doesn't crowd main pane)
-PANE=$(tmux split-window -v -d -l 20 -P -F "#{pane_id}")
+# Simple — auto-generates a unique output file, prints its path to stdout
+OUTFILE=$(scripts/spawn_agent.sh --prompt "Summarize foo.txt")
+cat "$OUTFILE"
 
-# 2. Run claude with a prompt, write result to file
-PROMPT="Your task here. Write your final answer to /tmp/agent-result.txt and nothing else after that."
-tmux send-keys -t "$PANE" "claude -p '$PROMPT' > /tmp/agent-result.txt 2>&1" Enter
-
-# 3. Poll until done
-scripts/poll_pane_done.sh "$PANE"
-
-# 4. Read result
-cat /tmp/agent-result.txt
-
-# 5. Cleanup
-tmux kill-pane -t "$PANE"
+# With explicit output path and a different agent
+scripts/spawn_agent.sh \
+  --prompt "Explain this diff: $(git diff HEAD~1)" \
+  --out /tmp/my-review.txt \
+  --agent-cmd "codex" \
+  --timeout 120
+cat /tmp/my-review.txt
 ```
 
-**Important:** Tell the agent in the prompt to write its final answer to a known file. Don't rely solely on `capture-pane` for long outputs — the buffer truncates.
+**Important:** The agent is instructed in the prompt to write its final answer to the output
+file. Don't rely solely on `capture-pane` for long outputs — the buffer truncates.
+Each run gets a unique file via `mktemp`, so parallel calls never collide.
 
 ---
 
@@ -168,8 +169,8 @@ For claude subagents, strategy 1 is more robust since the CLI spawns multiple ch
 ## Scripts
 
 - `scripts/poll_pane_done.sh` — polls a pane until its shell prompt returns; exits 0 on done, 1 on timeout.
-- `scripts/spawn_agent.sh` — full spawn-send-poll-read-cleanup cycle for a single Claude subagent.
-- `scripts/fanout.sh` — parallel fan-out over N tasks, one pane each.
+- `scripts/spawn_agent.sh` — full spawn-send-poll-read-cleanup cycle for a single subagent. Accepts `--agent-cmd` to select the agent binary; defaults to `claude -p`. Uses `mktemp` for both prompt and output files — no collisions.
+- `scripts/fanout.sh` — parallel fan-out over N tasks, one pane each. Also accepts `--agent-cmd`.
 
 ---
 
