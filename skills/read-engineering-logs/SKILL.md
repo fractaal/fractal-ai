@@ -6,7 +6,7 @@ description: >-
   invoke when the user says things like "remember when we did X?", "what was
   the decision on...", "find my notes about...", "what happened with...", or
   any variation of recalling/searching past engineering context. Uses qmd
-  (local hybrid search engine) to search Obsidian scratchpads via Bash CLI.
+  (local search engine, BM25 mode preferred) to search Obsidian scratchpads via Bash CLI.
   This is the READ half — for writing new logs, use write-engineering-logs.
   KEYWORDS: "remember", "recall", "find notes", "prior context", "pick up where
   we left off", "what did we decide", "past logs", "search scratchpads".
@@ -16,7 +16,7 @@ description: >-
 
 ## Overview
 
-Search and retrieve context from past Obsidian scratchpad entries using `qmd`, a local hybrid search engine (BM25 + vector + LLM re-ranking). This skill is read-only — it searches and synthesizes past entries but does not write new ones. For writing, see `write-engineering-logs`.
+Search and retrieve context from past Obsidian scratchpad entries using `qmd`. **Prefer BM25 search (`qmd search`) over hybrid/vector search (`qmd query`).** The hybrid mode is too resource-heavy for the host machine. This skill is read-only — it searches and synthesizes past entries but does not write new ones. For writing, see `write-engineering-logs`.
 
 All commands run via Bash CLI, making this skill portable across any AI agent (Claude Code, Codex, OpenCode).
 
@@ -46,8 +46,9 @@ Before first use, ensure `qmd` is installed and the scratchpads collection is in
    ```
 6. Run initial indexing:
    ```bash
-   qmd update && qmd embed
+   qmd update
    ```
+   > Skip `qmd embed` unless you specifically need Tier 3 hybrid search (which should be rare — see Search Strategy).
 
 After bootstrap, the collection persists across sessions. On subsequent runs, check `qmd collection list` and skip steps 4-6 if `scratchpads` already exists.
 
@@ -56,14 +57,16 @@ After bootstrap, the collection persists across sessions. On subsequent runs, ch
 Before every search operation (any tier), always run:
 
 ```bash
-qmd update && qmd embed
+qmd update
 ```
 
-Both are fast no-ops when nothing has changed (~1s total). This ensures results always reflect the latest writes, including any made earlier in the current session by `write-engineering-logs`.
+This is a fast no-op when nothing has changed (~1s). This ensures results always reflect the latest writes, including any made earlier in the current session by `write-engineering-logs`.
+
+> **Note:** Do NOT run `qmd embed` routinely — embedding is only needed for vector/hybrid search (Tier 3), which should be avoided. BM25 only needs `qmd update`.
 
 ## Search Strategy
 
-Choose the cheapest sufficient tier based on the query. Do not always escalate to Tier 3.
+Choose the cheapest sufficient tier based on the query. **Default to Tier 2 (BM25).** Do NOT use Tier 3 (`qmd query`) unless Tier 2 has already been tried and returned nothing useful — it loads vector models and LLM re-rankers that saturate CPU/memory on this machine.
 
 ### Tier 1: Direct File Retrieval
 
@@ -82,31 +85,34 @@ qmd ls scratchpads
 
 **When to use**: User says "pull up last Friday's notes", "the fluid sim scratchpad", or references a known date/topic.
 
-### Tier 2: Keyword Search (BM25)
+### Tier 2: Keyword Search (BM25) — **DEFAULT**
 
-Use for exact terms, function names, error messages, or specific identifiers. Fast, no model loading.
+**This is the preferred search tier.** Use for nearly all searches — exact terms, function names, error messages, conceptual queries, and general recall. Fast, lightweight, no model loading.
 
 ```bash
 qmd search "SphFluidSolver pressure normalization" --md -n 10 -c scratchpads
 ```
 
-**When to use**: User asks about a specific function, class, error message, or technical term.
+**When to use**: Almost always. This is your go-to. For conceptual queries, try rephrasing with multiple keyword variations before escalating to Tier 3. For example, for "what was our approach to fluid jitter?" try:
+```bash
+qmd search "fluid jitter fix approach" --md -n 10 -c scratchpads
+```
 
-### Tier 3: Hybrid Search (BM25 + Vector + Re-ranking)
+### Tier 3: Hybrid Search (BM25 + Vector + Re-ranking) — **AVOID**
 
-Use for conceptual, semantic, or open-ended questions where keyword matching alone would miss relevant context.
+> **WARNING: `qmd query` is resource-heavy.** It loads vector models and LLM re-rankers that saturate CPU/memory on this machine. **Only use as a last resort** when Tier 2 has already been tried with multiple keyword variations and returned nothing useful.
 
 ```bash
 qmd query "decision on fluid simulation architecture and jitter mitigation" --md -n 5 -c scratchpads
 ```
 
-**When to use**: User asks "what was our approach to...", "remember when we discussed...", "what were the trade-offs for...", or any question requiring semantic understanding beyond exact keywords.
+**When to use**: Only after Tier 2 has failed. Before using this, you must have already tried at least 2 different BM25 keyword searches. If you do use this tier, you must first run `qmd embed` (in addition to `qmd update`) to ensure vectors are fresh.
 
 ### Combining Tiers
 
 For thorough recontextualization (e.g., picking up a multi-session project), combine:
 1. Tier 1 to find all scratchpads for the topic by filename pattern.
-2. Tier 3 to find semantically related entries that might use different naming.
+2. Tier 2 with multiple keyword variations to catch entries that use different naming.
 
 ## Invocation Modes
 
