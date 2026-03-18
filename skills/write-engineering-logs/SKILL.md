@@ -21,10 +21,11 @@ Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the 
 ## Workflow
 
 1. Select the target note (default daily scratchpad).
-2. Append a new entry after each significant exchange or decision.
-3. Append again before implementation, after implementation, after tests/reviews, and at session end.
-4. If information changes, append a correction/update instead of rewriting history.
-5. Write in the moment; do not batch updates for later.
+2. **Before every append**, get the current datetime by running `date '+%Y-%m-%d %H:%M'` and prefix the entry with a timestamp header (e.g. `### 2026-03-11 14:32`). This is mandatory — scratchpad files are often updated across multiple days, so the filename date alone is not reliable.
+3. Append a new entry after each significant exchange or decision.
+4. Append again before implementation, after implementation, after tests/reviews, and at session end.
+5. If information changes, append a correction/update instead of rewriting history.
+6. Write in the moment; do not batch updates for later.
 
 ## Note Selection
 
@@ -52,5 +53,5 @@ Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the 
 ## Style (flexible)
 
 - Use narrative plus bullets as needed; do not omit details to "save space".
-- Keep entries chronological; add timestamps if helpful.
+- Every entry MUST start with a `### YYYY-MM-DD HH:MM` timestamp header. No exceptions.
 - Mirror the conversation with factual, concrete language.
