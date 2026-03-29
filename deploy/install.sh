@@ -32,10 +32,13 @@ if [[ -f "$agents_source" ]]; then
   link_item "$agents_source" "$HOME/.codex/AGENTS.md"
   link_item "$agents_source" "$HOME/.opencode/AGENTS.md"
   link_item "$agents_source" "$HOME/.claude/CLAUDE.md"
+  link_item "$agents_source" "$HOME/.gemini/AGENTS.md"
+  link_item "$agents_source" "$HOME/.gemini/CLAUDE.md"
 fi
 
 if [[ -d "$skills_source" ]]; then
   link_item "$skills_source" "$HOME/.codex/skills"
   link_item "$skills_source" "$HOME/.opencode/skills"
   link_item "$skills_source" "$HOME/.claude/skills"
+  link_item "$skills_source" "$HOME/.gemini/skills"
 fi

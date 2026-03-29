@@ -47,10 +47,13 @@ if (Test-Path -Path $agentsSource -PathType Leaf) {
     Link-FractalItem -Source $agentsSource -Target (Join-Path (Join-Path $HOME '.codex') 'AGENTS.md')
     Link-FractalItem -Source $agentsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'AGENTS.md')
     Link-FractalItem -Source $agentsSource -Target (Join-Path (Join-Path $HOME '.claude') 'CLAUDE.md')
+    Link-FractalItem -Source $agentsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'AGENTS.md')
+    Link-FractalItem -Source $agentsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'CLAUDE.md')
 }
 
 if (Test-Path -Path $skillsSource -PathType Container) {
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.codex') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.claude') 'skills')
+    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'skills')
 }

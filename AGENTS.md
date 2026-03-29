@@ -99,6 +99,81 @@ Every function, file, and module must be a **complete, coherent unit** — not a
 
 When in doubt: **Build fewer things, but build them completely.**
 
+# Verification Discipline — No Shipping Without Sanity Checks
+
+**THIS IS NOT OPTIONAL. THIS IS NOT "NICE TO HAVE." THIS IS A HARD GATE.**
+
+Do NOT tell the user "done", "resolved", "you're good to go", or ANY equivalent before completing verification. If you skip verification and the user has to ask "are you sure this won't break?", **you have already failed.** The user should NEVER have to be the one to ask for sanity checks — that is YOUR job, every single time, without exception.
+
+**Code that crashes on import is not a "bug." It's negligence.**
+
+A `TypeError`, `ImportError`, `NameError`, or `SyntaxError` that would be caught by simply
+running the code once should **never** reach a commit, let alone production. These are not
+edge cases — they are the absence of basic verification. Treat them as non-negotiable.
+
+## Before considering any code change "done":
+
+This applies to ALL code changes — new code, edits, refactors, AND merge conflict resolutions.
+
+1. **Read existing implementations first.** When creating a new file that follows an existing
+   pattern (MCP tools, API routes, hooks, adapters, components), **always read an adjacent
+   existing implementation** and match its signatures, return types, and conventions exactly.
+   Never write from memory of an API when a working reference exists in the codebase. The
+   reference file is the source of truth — not your training data.
+
+2. **Run basic sanity checks.** At minimum, verify the code can be loaded without crashing:
+   - Python: `python -c "from module import thing"` — catches `TypeError`, `ImportError`, `SyntaxError`
+   - TypeScript/Node: `npx tsc --noEmit` or at minimum `node -e "require('./module')"`
+   - If a build command exists, run it.
+
+3. **Tests are sacred. Treat them that way.**
+
+   Every codebase you work on should have tests. If it doesn't, that is a problem —
+   flag it, recommend writing them, and be visibly uncomfortable about shipping
+   untested code. A codebase without tests is a codebase where bugs hide.
+
+   If tests exist, you run them. Every time. Before every commit. This is not a
+   suggestion, not a "nice to have," not something you do when it's convenient. It
+   is a **hard gate**. You do not get to say "done" without a green test run.
+
+   **If tests don't run** (missing env vars, broken imports, missing dependencies),
+   **that is your problem to solve.** Set placeholder env vars. Install deps. Update
+   stale test fakes. Whatever it takes. "Tests wouldn't run because of missing env
+   vars" is not a valid reason to skip them — it is laziness dressed up as a
+   blocker. Figuring out how to make tests run IS the work.
+
+   **If test fakes are stale** (your change added a new parameter but the test mocks
+   don't have it), that is a second signal that something is wrong — and fixing it
+   is part of your change. Broken tests that can't even reach the code path you
+   changed are not "passing" — they're hiding bugs behind a wall of `AttributeError`.
+
+   **If you changed code and didn't run the tests, you didn't finish.** Full stop.
+   A `NameError` caught by running `pytest` once is not a "bug" — it is negligence
+   that should never, under any circumstances, reach a commit.
+
+4. **Cross-check at module boundaries.** Verify exports, imports, and function signatures match across all callers. If you discarded one side of a merge, compare both versions for added exports/params that callers may already depend on. Silent mismatches (extra args JS ignores, missing branches) are worse than crashes.
+
+5. **Verify at the boundaries.** If you wrote a function, call it with representative inputs.
+   If you added an API endpoint, hit it. If you created a UI component, render it. "It
+   parses" is not the same as "it works."
+
+6. **Run code review.** Use a code review agent if one exists, otherwise spin up an ad-hoc
+   subagent yourself. Cover wide, relevant failure scenarios — not just the happy path.
+   Think about what would break: wrong argument counts, missing required fields, type
+   mismatches, import paths that don't exist. THIS IS NOT OPTIONAL.
+
+## The pattern-matching rule in detail
+
+The most common failure mode is: you know an API *conceptually* but get its exact signature
+wrong. A decorator that takes 3 positional args, you pass 2. A function that returns a dict
+with a specific shape, you return a bare string. These are **always** preventable:
+
+- **Before writing**: `cat` or `Read` the nearest existing usage of the same API.
+- **After writing**: Verify your call signature matches the reference. Arg count, arg types,
+  return type, keyword vs positional — all of it.
+
+> *"If a working example exists 3 files over, there is zero excuse for getting the signature wrong."*
+
 # Frontend Design
 
 If you want to do frontend design, use the `frontend-design` skill. That skill owns the frontend-specific UI copy, conversation-context leakage, and "sky is blue" / obvious-state copy guidance.
@@ -116,6 +191,10 @@ Follow instructions previously defined above:
 > `codebase-retrieval` is a fantastic tool, but seeing as it's RAG+embeddings-powered, it's not the right tool for mechanical file-or-string-finding. Tasks like "finding every file that ends in -hooks.ts," "every occurrence of tryParseFoo," etc. is better suited to conventional CLI tools like ripgrep.
 
 > TLDR: Use `codebase-retrieval` for semantic and problem-domain search. Use typical CLI tools like rg/grep for mechanical substring/file name search.
+
+# Workflow: Automatic Code Review
+
+When you finish a dev task (implementation complete, changes written), **automatically** run the `superpowers:code-reviewer` agent before presenting the work as done. Do not wait for me to ask — treat code review as the final step of every implementation, not a separate request. Present the review findings alongside your "done" summary so we can address anything before committing.
 
 # Skill Usage
 
