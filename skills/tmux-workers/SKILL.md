@@ -174,12 +174,103 @@ For claude subagents, strategy 1 is more robust since the CLI spawns multiple ch
 
 ---
 
+## Pattern 4 — Visible AI Subagent (User Watches Live)
+
+When the user wants to SEE the agent working in the pane (not just collect results), do NOT
+use `spawn_agent.sh` (it redirects stdout to a file, making the pane blank). Instead, manually
+spawn the pane and use `tee` so output goes to both the terminal AND a file:
+
+```bash
+# Write prompt to a temp file to avoid quoting issues
+cat > /tmp/agent-prompt.txt << 'EOF'
+Your prompt here...
+EOF
+
+# Spawn pane — output is VISIBLE and saved to file
+OUTFILE=/tmp/agent-result.txt
+PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
+tmux send-keys -t "$PANE" \
+  "codex exec --full-auto \"\$(cat /tmp/agent-prompt.txt)\" 2>&1 | tee '$OUTFILE'; echo '===DONE===' >> '$OUTFILE'" Enter
+```
+
+**Key difference from Pattern 2:** `tee` replaces `>` so the user sees streaming output live.
+Poll and read back the same way — check for `===DONE===` sentinel in the output file.
+
+### Agent-specific commands
+
+| Agent | Headless (non-interactive) | Flags |
+|-------|---------------------------|-------|
+| Claude | `claude -p "prompt"` | `--dangerously-skip-permissions` if aliased |
+| Codex | `codex exec "prompt"` | `--full-auto` for sandboxed auto-approval |
+| Gemini | `gemini -p "prompt"` | `--yolo` for auto-approval |
+
+**Note:** When spawning Claude as a subagent from Claude, the inner Claude has no shared
+context. You're just asking yourself the same question twice. Prefer Codex or Gemini for
+genuine second opinions.
+
+---
+
+## Pattern 5 — Resume a Previous Subagent Session
+
+Both Codex and Gemini persist sessions and support resuming with follow-up questions.
+This lets you ask follow-ups without re-sending the full context.
+
+**Always resume by explicit session ID, not `--last`.** If multiple agents are spawning
+Codex/Gemini sessions concurrently, `--last` creates a race condition — you might
+resume the wrong session.
+
+### Gemini
+
+```bash
+# List saved sessions — note the UUID
+gemini --list-sessions
+# Output: 1. Your prompt here... (1 hour ago) [bff0d69a-c59a-4bf7-8524-6655fc297e64]
+
+# Resume by UUID with a follow-up, visible in pane
+PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
+tmux send-keys -t "$PANE" \
+  "gemini --resume bff0d69a-c59a-4bf7-8524-6655fc297e64 -p 'Your follow-up' --yolo 2>&1 | tee /tmp/gemini-followup.txt" Enter
+```
+
+### Codex
+
+```bash
+# Session IDs are UUIDs embedded in filenames under ~/.codex/sessions/YYYY/MM/DD/
+# e.g. rollout-2026-04-01T14-00-36-019d47a1-24ef-7232-9600-1c3392bbdd41.jsonl
+# The UUID is everything after the timestamp: 019d47a1-24ef-7232-9600-1c3392bbdd41
+
+# Resume by session UUID with a follow-up
+PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
+tmux send-keys -t "$PANE" \
+  "codex exec resume '019d47a1-24ef-7232-9600-1c3392bbdd41' --full-auto 'Your follow-up' 2>&1 | tee /tmp/codex-followup.txt" Enter
+```
+
+### Capturing session ID at spawn time
+
+To make resume reliable, capture the session ID when you first spawn the agent.
+For Codex, extract it from the session file created during the run:
+
+```bash
+# After Codex finishes, find the session file it just wrote
+CODEX_SESSION=$(ls -t ~/.codex/sessions/$(date +%Y/%m/%d)/ | head -1 | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+echo "Codex session: $CODEX_SESSION"
+```
+
+For Gemini, the UUID is shown in `--list-sessions` output.
+
+**Important:** Headless sessions (`codex exec`, `gemini -p`) DO save session history and
+are resumable. You don't need to have run them interactively first.
+
+---
+
 ## Rules & Discipline
 
 - **Always clean up panes.** Kill every pane you spawn. Leaked panes accumulate.
-- **Always tee to a file.** Never rely on `capture-pane` alone for output you care about.
-- **Give subagents a write target.** Prompt them explicitly to write their final answer to `/tmp/<name>.txt`. Parse that file, not the pane buffer.
+- **Always `tee` to a file.** Never use bare `>` redirect — it hides output from the user. Use `2>&1 | tee /tmp/file.txt` so output streams to both the pane (visible) and the file (readable by you).
+- **Don't ask subagents to write to /tmp files for reviews/verdicts.** The `tee` approach pollutes the output file with terminal artifacts (tool output, shell commands, hex dumps). Instead, let the subagent emit its response naturally to the pane, then use `tmux capture-pane -p -S - -t "$PANE"` and `grep -A` on a known marker (e.g. "## Review", "Verdict", "Findings") to extract the content from scrollback. This is more reliable than fighting file corruption. Reserve `/tmp` write targets for structured data the subagent generates programmatically, not prose.
 - **Don't poll tightly.** Use `sleep 2` between capture-pane checks. CPU waste and noise if you spin hot.
 - **One task per pane.** Don't reuse a pane for multiple sequential tasks. Spawn fresh, kill when done.
 - **Keep prompts self-contained.** A subagent in a pane has no shared context with your session. Pass everything it needs in the prompt string.
 - **Timeout everything.** `poll_pane_done.sh` accepts a `--timeout` arg. Always set one. Hung agents must not block forever.
+- **Prefer `tee` over `spawn_agent.sh` when the user is watching.** `spawn_agent.sh` redirects stdout to a file, making the pane appear blank. Only use it for fire-and-forget background work where the user doesn't need to see progress.
+- **Always resume existing sessions for follow-up work.** If you previously spawned a subagent (e.g. Codex for code review) and now need to send it related follow-up work (e.g. "review the fixes for the issues you flagged"), ALWAYS resume the existing session instead of spawning a fresh one. The subagent already has the full conversation context — a cold start loses that and forces re-reading everything. Capture the session ID when you first spawn it, and use `codex exec resume '<id>'` / `gemini --resume <id>` for follow-ups. This is not optional — if there's a natural prior session to continue, continue it.

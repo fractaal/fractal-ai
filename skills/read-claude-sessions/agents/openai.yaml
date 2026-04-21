@@ -1,0 +1,4 @@
+interface:
+  display_name: "Read Claude Sessions"
+  short_description: "Search and inspect local Claude session history"
+  default_prompt: "Use $read-claude-sessions to recover context from a prior Claude Code session in ~/.claude/projects."

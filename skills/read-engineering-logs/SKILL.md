@@ -6,7 +6,9 @@ description: >-
   invoke when the user says things like "remember when we did X?", "what was
   the decision on...", "find my notes about...", "what happened with...", or
   any variation of recalling/searching past engineering context. Uses qmd
-  (local search engine, BM25 mode preferred) to search Obsidian scratchpads via Bash CLI.
+  (local search engine) over Obsidian scratchpads via Bash CLI. Default is a
+  lean-model semantic query wrapped in ./search.sh; BM25 and direct file
+  retrieval remain available for exact-string and known-filename lookups.
   This is the READ half — for writing new logs, use write-engineering-logs.
   KEYWORDS: "remember", "recall", "find notes", "prior context", "pick up where
   we left off", "what did we decide", "past logs", "search scratchpads".
@@ -16,7 +18,7 @@ description: >-
 
 ## Overview
 
-Search and retrieve context from past Obsidian scratchpad entries using `qmd`. **Prefer BM25 search (`qmd search`) over hybrid/vector search (`qmd query`).** The hybrid mode is too resource-heavy for the host machine. This skill is read-only — it searches and synthesizes past entries but does not write new ones. For writing, see `write-engineering-logs`.
+Search and retrieve context from past Obsidian scratchpad entries using `qmd`. **Default to the wrapper script `~/.claude/skills/read-engineering-logs/search.sh "<query>"`** — it preloads a lean-model preset (0.6B Qwen3 expansion instead of qmd's 1.7B default), runs `qmd update` + `qmd embed` for freshness, and invokes `qmd query --no-rerank` for semantic retrieval. This gives high-quality semantic results without pinning the M1 Pro. This skill is read-only — it searches and synthesizes past entries but does not write new ones. For writing, see `write-engineering-logs`.
 
 All commands run via Bash CLI, making this skill portable across any AI agent (Claude Code, Codex, OpenCode).
 
@@ -44,75 +46,64 @@ Before first use, ensure `qmd` is installed and the scratchpads collection is in
    ```bash
    qmd context add qmd://scratchpads "Engineering scratchpads — daily session logs containing decisions, implementation details, debugging trails, architecture discussions, and design notes from pair-programming sessions across multiple projects."
    ```
-6. Run initial indexing:
+6. Run initial indexing and embedding:
    ```bash
    qmd update
+   qmd embed
    ```
-   > Skip `qmd embed` unless you specifically need Tier 3 hybrid search (which should be rare — see Search Strategy).
+   > First `qmd embed` is slow — it vectorizes every chunk (~0.4s/chunk on M1). Subsequent runs only embed newly-added chunks. The wrapper calls both on every invocation; both are no-ops when nothing has changed.
 
 After bootstrap, the collection persists across sessions. On subsequent runs, check `qmd collection list` and skip steps 4-6 if `scratchpads` already exists.
 
-## Pre-Search Freshness
-
-Before every search operation (any tier), always run:
-
-```bash
-qmd update
-```
-
-This is a fast no-op when nothing has changed (~1s). This ensures results always reflect the latest writes, including any made earlier in the current session by `write-engineering-logs`.
-
-> **Note:** Do NOT run `qmd embed` routinely — embedding is only needed for vector/hybrid search (Tier 3), which should be avoided. BM25 only needs `qmd update`.
-
 ## Search Strategy
-
-Choose the cheapest sufficient tier based on the query. **Default to Tier 2 (BM25).** Do NOT use Tier 3 (`qmd query`) unless Tier 2 has already been tried and returned nothing useful — it loads vector models and LLM re-rankers that saturate CPU/memory on this machine.
 
 ### Tier 1: Direct File Retrieval
 
 Use when the user references a specific date, project name, or topic that maps directly to a filename.
 
 ```bash
-# Get a specific file
 qmd get "Scratchpads/2026-02-23-fluid-jitter-fix.md"
-
-# Get multiple files by pattern
 qmd multi-get "Scratchpads/2026-02-*-fluid*.md" --max-bytes 20480
-
-# List files to find candidates
 qmd ls scratchpads
 ```
 
-**When to use**: User says "pull up last Friday's notes", "the fluid sim scratchpad", or references a known date/topic.
+**When to use**: User says "pull up last Friday's notes", or references a known filename/date/topic.
 
-### Tier 2: Keyword Search (BM25) — **DEFAULT**
+### Tier 2: Lean LLM Semantic Search — **DEFAULT**
 
-**This is the preferred search tier.** Use for nearly all searches — exact terms, function names, error messages, conceptual queries, and general recall. Fast, lightweight, no model loading.
+Invoke the wrapper with the query as the first argument. It handles env vars, freshness, and the right qmd flags. Pass any extra `qmd query` flags after the query.
+
+```bash
+~/.claude/skills/read-engineering-logs/search.sh "approach to fluid jitter mitigation"
+~/.claude/skills/read-engineering-logs/search.sh "memory agent session handoff" -n 10
+~/.claude/skills/read-engineering-logs/search.sh "qmd architecture" --full --json
+```
+
+**When to use**: Almost always. Handles synonyms, paraphrases, conceptual queries, general recall. Handles exact-string queries too — qmd auto-detects a "strong BM25 signal" and skips LLM expansion when the keywords already hit hard.
+
+**Expected timing on M1 Pro**:
+- ≤5s — `qmd update` + `qmd embed` are clean no-ops, BM25 signal is strong, LLM expansion skipped
+- ~20s — LLM expansion skipped, reranking pass runs
+- ~60–90s — first cold-process semantic query with expansion (model load dominates); subsequent queries in the same process are much faster
+
+CPU stays low (~15–20%) the whole time. If you see the machine grinding, that's a different problem — report it.
+
+### Tier 3: BM25 Keyword Search — fast exact-match escape hatch
+
+For mechanical lookups where semantic matching adds nothing — specific function names, exact error text, file paths, literal identifiers. Zero model loading, sub-second.
 
 ```bash
 qmd search "SphFluidSolver pressure normalization" --md -n 10 -c scratchpads
+qmd search "TypeError: cannot read property" --md -n 10 -c scratchpads
 ```
 
-**When to use**: Almost always. This is your go-to. For conceptual queries, try rephrasing with multiple keyword variations before escalating to Tier 3. For example, for "what was our approach to fluid jitter?" try:
-```bash
-qmd search "fluid jitter fix approach" --md -n 10 -c scratchpads
-```
-
-### Tier 3: Hybrid Search (BM25 + Vector + Re-ranking) — **AVOID**
-
-> **WARNING: `qmd query` is resource-heavy.** It loads vector models and LLM re-rankers that saturate CPU/memory on this machine. **Only use as a last resort** when Tier 2 has already been tried with multiple keyword variations and returned nothing useful.
-
-```bash
-qmd query "decision on fluid simulation architecture and jitter mitigation" --md -n 5 -c scratchpads
-```
-
-**When to use**: Only after Tier 2 has failed. Before using this, you must have already tried at least 2 different BM25 keyword searches. If you do use this tier, you must first run `qmd embed` (in addition to `qmd update`) to ensure vectors are fresh.
+**When to use**: The query is a literal string you expect to appear verbatim in a scratchpad. Otherwise prefer Tier 2 — it handles exact strings too via BM25 fusion, just with more overhead.
 
 ### Combining Tiers
 
-For thorough recontextualization (e.g., picking up a multi-session project), combine:
-1. Tier 1 to find all scratchpads for the topic by filename pattern.
-2. Tier 2 with multiple keyword variations to catch entries that use different naming.
+For thorough recontextualization (picking up a multi-session project), combine:
+1. Tier 1 to pull all scratchpads for the topic by filename pattern.
+2. Tier 2 with the project name or a conceptual query to surface entries that use different naming.
 
 ## Invocation Modes
 
@@ -154,11 +145,21 @@ When self-invoking to recontextualize at the start of a session or mid-conversat
 
 ## Rules
 
-- **NEVER run multiple `qmd` commands in parallel.** Always run them sequentially (one at a time, waiting for each to finish before starting the next). Parallel `qmd` invocations saturate CPU/memory and will freeze the machine. This applies to all tiers — even if you need multiple searches (e.g., Tier 1 + Tier 3 combined), run them one after another, never concurrently.
+- **NEVER run multiple `qmd` / `search.sh` commands in parallel.** Always run them sequentially (one at a time, waiting for each to finish). Parallel invocations multiply model loads and will freeze the machine. This applies across tiers too — Tier 1 + Tier 2 go sequentially, never concurrently.
 - Never fabricate or hallucinate scratchpad content. Only surface what `qmd` actually returns.
 - Always attribute excerpts to their source file and date.
 - When multiple scratchpads cover the same topic across dates, present them chronologically to show how the work evolved.
 - If `qmd` returns low-relevance results (scores below 0.3), note the uncertainty rather than presenting weak matches as authoritative.
-- Prefer `--md` output format for clean, parseable results.
-- Always scope searches to the scratchpads collection with `-c scratchpads`.
+- `search.sh` already sets `--md` and `-c scratchpads`; don't duplicate them.
 - If the user asks for something with no scratchpad trail, say so clearly and suggest starting a new log via `write-engineering-logs`.
+
+## Advanced: Overriding the Preset
+
+`search.sh` uses `${VAR:-default}` indirection — export any of these before calling the script to override per-invocation:
+
+- `QMD_GENERATE_MODEL` — expansion model (default: `Qwen3-0.6B-Q4_K_M`). Swap to a different GGUF if you want even smaller / larger. Alternative constants exported from qmd's `src/llm.ts`: `LFM2_GENERATE_MODEL`, `LFM2_INSTRUCT_MODEL`.
+- `QMD_EMBED_MODEL` / `QMD_RERANK_MODEL` — embedder / reranker. Defaults (`embeddinggemma-300M`, `qwen3-reranker-0.6B`) are already small; rarely worth changing.
+- `QMD_EXPAND_CONTEXT_SIZE` / `QMD_RERANK_CONTEXT_SIZE` / `QMD_EMBED_CONTEXT_SIZE` — context window caps.
+- `QMD_LLAMA_GPU` — `metal` | `vulkan` | `cuda` | `false` | `auto` (default).
+
+For an even cheaper semantic probe (embedder-only — no expansion, no reranker, no LLM load), bypass the wrapper and call `qmd vsearch "<query>" --md -c scratchpads -n 10` directly. Useful when even the lean preset is still too slow on a particular box.

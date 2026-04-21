@@ -71,8 +71,9 @@ PANE=$(tmux split-window "-${SPLIT}" -d -P -F "#{pane_id}")
 
 # Feed prompt via file to sidestep escaping entirely.
 # Agent reads the prompt via command substitution; cleanup prompt file when done.
+# Uses tee so output is visible in the pane AND saved to the output file.
 tmux send-keys -t "$PANE" \
-  "${AGENT_CMD} \"\$(cat '${PROMPT_FILE}')\" > '${OUTFILE}' 2>&1; rm -f '${PROMPT_FILE}'" \
+  "${AGENT_CMD} \"\$(cat '${PROMPT_FILE}')\" 2>&1 | tee '${OUTFILE}'; rm -f '${PROMPT_FILE}'" \
   Enter
 
 # Poll until done, then clean up pane
