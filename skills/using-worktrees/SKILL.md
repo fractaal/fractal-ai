@@ -67,6 +67,10 @@ If you use an exception, say which exception applies.
 
 ## Worker Instructions
 
+The main session owns worktree orchestration. Do not assume spawned workers will
+infer the convention from global instructions; create or select the worktree
+first, then pass the path and branch explicitly in the worker prompt.
+
 When briefing a repo-editing worker, include:
 
 - The worktree path it must use.
