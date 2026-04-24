@@ -27,6 +27,7 @@ link_item() {
 
 agents_source="$FRACTAL_AI_HOME/AGENTS.md"
 skills_source="$FRACTAL_AI_HOME/skills"
+statusline_source="$FRACTAL_AI_HOME/statusline-command.sh"
 
 if [[ -f "$agents_source" ]]; then
   link_item "$agents_source" "$HOME/.codex/AGENTS.md"
@@ -41,4 +42,8 @@ if [[ -d "$skills_source" ]]; then
   link_item "$skills_source" "$HOME/.opencode/skills"
   link_item "$skills_source" "$HOME/.claude/skills"
   link_item "$skills_source" "$HOME/.gemini/skills"
+fi
+
+if [[ -f "$statusline_source" ]]; then
+  link_item "$statusline_source" "$HOME/.claude/statusline-command.sh"
 fi

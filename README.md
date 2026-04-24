@@ -8,10 +8,11 @@ A single `AGENTS.md` drives shared context across all supported tools, and a por
 
 ```
 .
-├── AGENTS.md              # Shared agent instructions (context, code discipline, tool usage)
+├── AGENTS.md                # Shared agent instructions (context, code discipline, tool usage)
+├── statusline-command.sh    # Claude Code statusline (NASApunk ECAM display)
 ├── deploy/
-│   ├── install.sh         # Symlinks AGENTS.md & skills/ into tool config dirs (POSIX)
-│   └── install.ps1        # Same as above (PowerShell / Windows)
+│   ├── install.sh           # Symlinks AGENTS.md, skills/ & statusline into tool config dirs (POSIX)
+│   └── install.ps1          # Same as above (PowerShell / Windows)
 └── skills/
     ├── confirm-codebase-and-design-alignment/  # Pre-implementation contract verification
     ├── read-engineering-logs/                   # Search & recall past scratchpad context via qmd
@@ -55,9 +56,22 @@ The install scripts symlink into the following locations, backing up any existin
 | `AGENTS.md` | `~/.codex/AGENTS.md` |
 | `AGENTS.md` | `~/.opencode/AGENTS.md` |
 | `AGENTS.md` | `~/.claude/CLAUDE.md` |
+| `AGENTS.md` | `~/.gemini/AGENTS.md` |
+| `AGENTS.md` | `~/.gemini/CLAUDE.md` |
 | `skills/` | `~/.codex/skills` |
 | `skills/` | `~/.opencode/skills` |
 | `skills/` | `~/.claude/skills` |
+| `skills/` | `~/.gemini/skills` |
+| `statusline-command.sh` | `~/.claude/statusline-command.sh` |
+
+The Claude statusline expects `jq` and `perl` on `PATH`, plus a Nerd Font in your terminal. To enable it after installing, add the following to `~/.claude/settings.json`:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "bash ~/.claude/statusline-command.sh"
+}
+```
 
 ## License
 
