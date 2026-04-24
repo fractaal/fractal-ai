@@ -21,9 +21,23 @@ _detect_term_width() {
   #
   # Strategy: walk up the PPID chain to find the first ancestor with a real tty,
   # open that /dev/ttysNNN device, and TIOCGWINSZ ioctl for the true width.
-  # macOS TIOCGWINSZ = 0x40087468.
+  # TIOCGWINSZ is a kernel-specific magic number; pick it per $^O.
+  #   Linux          0x5413
+  #   macOS / BSD    0x40087468
+  #   Solaris        0x5468
+  # ps's no-tty sentinel also varies: "??" on macOS/BSD, "?" on Linux.
   perl -e '
     use POSIX;
+    my %TIOCGWINSZ = (
+      linux     => 0x5413,
+      darwin    => 0x40087468,
+      freebsd   => 0x40087468,
+      netbsd    => 0x40087468,
+      openbsd   => 0x40087468,
+      dragonfly => 0x40087468,
+      solaris   => 0x5468,
+    );
+    my $tiocgwinsz = $TIOCGWINSZ{$^O} // 0x40087468;
     my $pid = getppid();
     my $tty_dev;
     for (1..10) {
@@ -31,7 +45,7 @@ _detect_term_width() {
       chomp $out;
       my ($tty, $ppid) = split(/\s+/, $out);
       last unless defined $tty;
-      if ($tty ne "??" && $tty ne "-" && $tty ne "") {
+      if ($tty ne "?" && $tty ne "??" && $tty ne "-" && $tty ne "") {
         $tty_dev = "/dev/$tty";
         last;
       }
@@ -40,7 +54,7 @@ _detect_term_width() {
     }
     if ($tty_dev && open(my $fd, "<", $tty_dev)) {
       my $winsize = "\0" x 8;
-      if (ioctl($fd, 0x40087468, $winsize)) {
+      if (ioctl($fd, $tiocgwinsz, $winsize)) {
         my ($rows, $cols) = unpack("SS", $winsize);
         print "$cols\n";
         exit 0;
