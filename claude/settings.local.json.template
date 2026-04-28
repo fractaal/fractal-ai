@@ -19,6 +19,10 @@
             "type": "command",
             "command": "python3 $HOME/.claude/hooks/post_impl_gate.py",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/auto-rename-session.sh"
           }
         ]
       }

@@ -9,7 +9,8 @@
       "Bash(git -c protocol.file.allow=always submodule add:*)",
       "Bash(dotnet:*)",
       "Bash(dotnet --list-sdks:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(bash ~/.claude/hooks/scripts/apply-session-rename.sh:*)"
     ],
     "defaultMode": "plan"
   },
