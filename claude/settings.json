@@ -18,8 +18,15 @@
     "frontend-design@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true
   },
+  "theme": "dark",
   "effortLevel": "xhigh",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "voiceEnabled": true,
   "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true,
   "verbose": true,
   "teammateMode": "tmux",
   "remoteControlAtStartup": true
