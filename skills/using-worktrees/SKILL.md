@@ -43,7 +43,7 @@ You may stay in the current checkout only when one of these is true:
 - The current directory is already a task worktree, especially under `.worktrees/`.
 - The directory is not a git repository or cannot use `git worktree`.
 - The user explicitly says to work in the current checkout.
-- The task is a tiny edit to shared/global agent config where the user clearly wants the live config updated immediately, such as `~/.fractal-ai/AGENTS.md`.
+- The task is a tiny edit to shared/global agent config where the user clearly wants the live config updated immediately, such as `~/.fractal-ai/DEPLOYED-INSTRUCTIONS.md`.
 - Creating a worktree would be more dangerous than the edit, for example because the repo has unresolved user changes required for the task. State this before proceeding.
 
 If you use an exception, say which exception applies.

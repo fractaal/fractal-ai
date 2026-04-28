@@ -1,37 +1,35 @@
 # fractal-ai
 
-Personal AI agent configuration and skills for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), and [OpenCode](https://github.com/sst/opencode).
+Personal AI agent configuration and skills for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/sst/opencode), Gemini, and Augment.
 
-A single `AGENTS.md` drives shared context across all supported tools, and a portable `skills/` directory provides reusable, tool-invokable capabilities that any compatible agent can pick up.
+A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported tools, a portable `skills/` directory provides reusable, tool-invokable capabilities that any compatible agent can pick up, and a `claude/` subdirectory holds Claude Code-specific artifacts (settings, hooks, statusline) deployed only into `~/.claude/`.
 
 ## Structure
 
 ```
 .
-├── AGENTS.md                # Shared agent instructions (context, code discipline, tool usage)
-├── statusline-command.sh    # Claude Code statusline (NASApunk ECAM display)
-├── deploy/
-│   ├── install.sh           # Symlinks AGENTS.md, skills/ & statusline into tool config dirs (POSIX)
-│   └── install.ps1          # Same as above (PowerShell / Windows)
-└── skills/
-    ├── confirm-codebase-and-design-alignment/  # Pre-implementation contract verification
-    ├── read-engineering-logs/                   # Search & recall past scratchpad context via qmd
-    ├── write-engineering-logs/                  # Living "doctor's notes" in Obsidian
-    ├── generate-godot-uids/                    # Godot ResourceUID generator (uid://...)
-    ├── git-commit-convention/                  # Atomic, typed commit workflow ([type][name] format)
-    └── godot-dotnet-build/                     # Godot C# project build & verification
+├── DEPLOYED-INSTRUCTIONS.md    # Userwide instructions content. Deployed as AGENTS.md / CLAUDE.md
+├── AGENTS.md                   # Meta: instructions for working ON this repo (not deployed)
+├── skills/                     # Tool-agnostic skills, deployed to every supported tool
+├── claude/                     # Claude Code-specific
+│   ├── settings.json           # Portable settings (no machine-specific paths)
+│   ├── settings.local.json.template  # Hooks + statusLine, $HOME-rendered per machine by install.sh
+│   ├── hooks/                  # PreToolUse / Stop / PostToolUse hook scripts
+│   ├── statusline-command.sh   # Statusline (NASApunk ECAM display)
+│   └── sync-agents.sh          # Bridges select skills into ~/.claude/agents/
+└── deploy/
+    ├── install.sh              # Symlinks sources into tool config dirs (POSIX)
+    └── install.ps1             # Same on PowerShell / Windows
 ```
 
-## Skills
+### DEPLOYED-INSTRUCTIONS.md vs AGENTS.md
 
-| Skill | Description |
-|---|---|
-| **confirm-codebase-and-design-alignment** | Verify a requested change against existing system contracts and design intent before implementing. Surfaces mismatches early and proposes aligned alternatives. |
-| **read-engineering-logs** | Searches and retrieves past Obsidian scratchpad context using qmd (local hybrid search). Synthesizes prior decisions, implementation details, and session history for recontextualization. |
-| **write-engineering-logs** | Maintains a chronological, exhaustive log in Obsidian scratchpads — decisions, implementation details, commands, and outcomes — to preserve context across sessions. |
-| **generate-godot-uids** | CLI tool that generates valid Godot `uid://` strings using a CSPRNG-backed 64-bit value encoded in base36. |
-| **git-commit-convention** | Standardized atomic commit workflow. Stages intentionally, partitions by concern, and formats messages as `[type][name] details`. |
-| **godot-dotnet-build** | Runs `dotnet build` against a Godot `.csproj` to verify C# compilation after changes. |
+These are two intentionally separate slots:
+
+- `DEPLOYED-INSTRUCTIONS.md` is the userwide content that gets distributed under the names `AGENTS.md` / `CLAUDE.md` in every tool's config directory.
+- `AGENTS.md` (this repo's own) is meta — it tells agents how to work **on** this repo. It is NOT distributed.
+
+Without the rename, both slots collapsed onto one filename and there was no place to keep repo-specific guidance.
 
 ## Setup
 
@@ -53,25 +51,24 @@ The install scripts symlink into the following locations, backing up any existin
 
 | Source | Target |
 |---|---|
-| `AGENTS.md` | `~/.codex/AGENTS.md` |
-| `AGENTS.md` | `~/.opencode/AGENTS.md` |
-| `AGENTS.md` | `~/.claude/CLAUDE.md` |
-| `AGENTS.md` | `~/.gemini/AGENTS.md` |
-| `AGENTS.md` | `~/.gemini/CLAUDE.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.codex/AGENTS.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.opencode/AGENTS.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.claude/CLAUDE.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.gemini/AGENTS.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.gemini/CLAUDE.md` |
+| `DEPLOYED-INSTRUCTIONS.md` | `~/.augment/AGENTS.md` |
 | `skills/` | `~/.codex/skills` |
 | `skills/` | `~/.opencode/skills` |
 | `skills/` | `~/.claude/skills` |
 | `skills/` | `~/.gemini/skills` |
-| `statusline-command.sh` | `~/.claude/statusline-command.sh` |
+| `skills/` | `~/.augment/skills` |
+| `claude/settings.json` | `~/.claude/settings.json` |
+| `claude/hooks/` | `~/.claude/hooks` |
+| `claude/statusline-command.sh` | `~/.claude/statusline-command.sh` |
 
-The Claude statusline expects `jq` and `perl` on `PATH`, plus a Nerd Font in your terminal. To enable it after installing, add the following to `~/.claude/settings.json`:
+`settings.json` here is the **portable** Claude Code settings — env vars, permission rules, plugins, and preferences that work on any machine. The hook command paths and statusline command are path-coupled (they reference absolute paths), so they live in `claude/settings.local.json.template`. `install.sh` renders this template per machine — substituting `$HOME` for the actual home directory — and deep-merges into `~/.claude/settings.local.json`. Top-level keys you add manually outside the template (e.g. `permissions.allow` entries, `enabledPlugins` overrides) are preserved across re-runs. **Caveat:** the merge replaces arrays wholesale, so custom entries *inside* `hooks` or `statusLine` (the template-managed sections) get overwritten on re-render — add such entries to the template instead. install.sh backs up the prior file to `*.bak-YYYYMMDD-HHMMSS` before any rewrite; malformed existing JSON is moved to `*.bak-malformed-*` and the template is rendered fresh.
 
-```json
-"statusLine": {
-  "type": "command",
-  "command": "bash ~/.claude/statusline-command.sh"
-}
-```
+The Claude statusline expects `jq` and `perl` on `PATH`, plus a Nerd Font in your terminal. `jq` is also required by `install.sh` for the settings.local.json template merge.
 
 ## License
 
