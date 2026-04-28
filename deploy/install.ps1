@@ -45,84 +45,35 @@ function Link-FractalItem {
     }
 }
 
-# Render claude/settings.local.json.template -> ~/.claude/settings.local.json,
-# substituting $HOME (literal .Replace, no regex hazards) and deep-merging
-# onto any existing file. Template wins on overlapping keys (hooks, statusLine);
-# user-managed keys outside the template are preserved. NOTE: jq object-merge
-# replaces arrays wholesale — custom entries inside template-managed sections
-# are overwritten; add them to the template instead.
-# Idempotent: no-op if merged result equals current canonical form.
-# Robust: malformed existing JSON is moved to .bak-malformed-* and re-rendered
-# fresh rather than aborting the installer.
-# Uses jq via temp files (--slurpfile) to sidestep PowerShell's pipe-to-native
-# subexpression semantics, which silently break when nested.
-function Render-SettingsLocal {
-    param(
-        [string]$Template,
-        [string]$Target
-    )
+# Warn if ~/.claude/settings.local.json still contains keys that are now owned
+# by the canonical (user-global) settings.json. The previous layout rendered
+# `hooks` and `statusLine` into settings.local.json, but that file is cwd-
+# ancestry-scoped (only loads when cwd is under $HOME), so those entries
+# silently failed for sessions outside $HOME. Both keys now live in the
+# canonical settings.json. Stale copies cause duplicate hook firing because
+# Claude Code merges hook arrays across precedence scopes and the string-
+# difference between `~/...` and `$HOME-substituted/...` defeats dedup.
+function Warn-StaleSettingsLocal {
+    $target = Join-Path (Join-Path $HOME '.claude') 'settings.local.json'
+    if (-not (Test-Path -Path $target -PathType Leaf)) { return }
+    if (-not (Get-Command jq -ErrorAction SilentlyContinue)) { return }
 
-    if (-not (Test-Path -Path $Template -PathType Leaf)) { return }
+    & jq empty $target 2>$null
+    if ($LASTEXITCODE -ne 0) { return }
 
-    if (-not (Get-Command jq -ErrorAction SilentlyContinue)) {
-        Write-Warning "  jq not found; skipping $Target render"
-        return
-    }
-
-    $rendered = (Get-Content -Raw -Path $Template).Replace('$HOME', $HOME)
-
-    $tmpRendered = New-TemporaryFile
-    try {
-        Set-Content -Path $tmpRendered -Value $rendered -NoNewline -Encoding utf8
-
-        $renderedCanon = & jq . $tmpRendered
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Template at $Template is not valid JSON"
-            return
-        }
-
-        $writeTarget = $false
-        $desired = $null
-
-        if (Test-Path -Path $Target -PathType Leaf) {
-            & jq empty $Target 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $backup = "${Target}.bak-malformed-${timestamp}"
-                Move-Item -Path $Target -Destination $backup
-                Write-Warning "  WARN: $Target was malformed JSON; moved to $backup, re-rendering fresh"
-                $desired = $renderedCanon -join "`n"
-                $writeTarget = $true
-            }
-            else {
-                $current = (& jq . $Target) -join "`n"
-                $merged = (& jq -n --slurpfile e $Target --slurpfile r $tmpRendered '$e[0] * $r[0]') -join "`n"
-                if ($current -eq $merged) { return }
-                $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-                $backup = "${Target}.bak-${timestamp}"
-                Copy-Item -Path $Target -Destination $backup
-                Write-Host "  re-rendered: merged $Template -> $Target (backup: $backup)"
-                $desired = $merged
-                $writeTarget = $true
-            }
-        }
-        else {
-            $parent = Split-Path -Path $Target -Parent
-            if (-not (Test-Path -Path $parent)) {
-                New-Item -ItemType Directory -Path $parent -Force | Out-Null
-            }
-            Write-Host "  rendered: $Template -> $Target"
-            $desired = $renderedCanon -join "`n"
-            $writeTarget = $true
-        }
-
-        if ($writeTarget) {
-            Set-Content -Path $Target -Value $desired -NoNewline
-            Add-Content -Path $Target -Value ''
-        }
-    }
-    finally {
-        Remove-Item -Path $tmpRendered -ErrorAction SilentlyContinue
+    $raw = & jq -r '[keys[] | select(. == "hooks" or . == "statusLine")] | join(", ")' $target
+    $stale = if ($null -eq $raw) { '' } else { ($raw -join "`n").Trim() }
+    if ($stale) {
+        Write-Warning ""
+        Write-Warning "  ────────────────────────────────────────────────────────────"
+        Write-Warning "  $target still contains stale top-level keys: $stale"
+        Write-Warning "  These keys are now owned by the canonical settings.json (user-global)."
+        Write-Warning "  Leaving them here causes duplicate hook firing on every Stop/Edit."
+        Write-Warning ""
+        Write-Warning "  Run this to clean them up (preserves all your other local keys):"
+        Write-Warning "    `$tmp = New-TemporaryFile; jq 'del(.hooks, .statusLine)' '$target' | Set-Content `$tmp; Move-Item -Force `$tmp '$target'"
+        Write-Warning "  ────────────────────────────────────────────────────────────"
+        Write-Warning ""
     }
 }
 
@@ -132,7 +83,6 @@ $skillsSource = Join-Path $FractalAiHome 'skills'
 
 # Claude-specific sources
 $claudeSettingsSource = Join-Path $FractalAiHome 'claude/settings.json'
-$claudeSettingsLocalTemplate = Join-Path $FractalAiHome 'claude/settings.local.json.template'
 $claudeHooksSource = Join-Path $FractalAiHome 'claude/hooks'
 $claudeStatuslineSource = Join-Path $FractalAiHome 'claude/statusline-command.sh'
 
@@ -168,5 +118,4 @@ if (Test-Path -Path $claudeStatuslineSource -PathType Leaf) {
     Link-FractalItem -Source $claudeStatuslineSource -Target (Join-Path (Join-Path $HOME '.claude') 'statusline-command.sh')
 }
 
-# Claude-only: render settings.local.json from template
-Render-SettingsLocal -Template $claudeSettingsLocalTemplate -Target (Join-Path (Join-Path $HOME '.claude') 'settings.local.json')
+Warn-StaleSettingsLocal

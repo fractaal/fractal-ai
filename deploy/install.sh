@@ -30,62 +30,35 @@ link_item() {
   ln -s "$source" "$target"
 }
 
-# Render claude/settings.local.json.template -> ~/.claude/settings.local.json,
-# substituting $HOME (literal parameter expansion, no regex hazards) and
-# deep-merging onto any existing file. Template wins on overlapping keys
-# (hooks, statusLine); user-managed keys outside the template (permissions,
-# enabledPlugins, etc.) are preserved. NOTE: jq object-merge replaces arrays
-# wholesale — custom entries inside template-managed sections (e.g. user-added
-# hooks) are overwritten. Add such entries to the template instead.
-# Idempotent: no-op if merged result equals current canonical form.
-# Robust: malformed existing JSON is moved to .bak-malformed-* and re-rendered
-# fresh rather than aborting the installer.
-render_settings_local() {
-  local template="$1"
-  local target="$2"
+# Warn if ~/.claude/settings.local.json still contains keys that are now owned
+# by the canonical (user-global) settings.json. The previous layout rendered
+# `hooks` and `statusLine` into settings.local.json, but that file is cwd-
+# ancestry-scoped (only loads when cwd is under $HOME), so those entries
+# silently failed for sessions outside $HOME. Both keys now live in the
+# canonical settings.json. Stale copies in settings.local.json cause hook
+# duplication (Claude Code merges arrays across precedence scopes; the
+# string-difference between `~/...` and `$HOME-substituted/...` defeats
+# dedup), so leaving them risks every Stop/Edit firing the gates twice.
+warn_stale_settings_local() {
+  local target="$HOME/.claude/settings.local.json"
+  [[ -f "$target" ]] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq empty "$target" 2>/dev/null || return 0
 
-  [[ -f "$template" ]] || return 0
-
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "  WARN: jq not found; skipping $target render" >&2
-    return 0
+  local stale
+  stale=$(jq -r '[keys[] | select(. == "hooks" or . == "statusLine")] | join(", ")' "$target")
+  if [[ -n "$stale" ]]; then
+    echo "" >&2
+    echo "  ────────────────────────────────────────────────────────────" >&2
+    echo "  WARN: $target still contains stale top-level keys: $stale" >&2
+    echo "        These keys are now owned by the canonical settings.json (user-global)." >&2
+    echo "        Leaving them here causes duplicate hook firing on every Stop/Edit." >&2
+    echo "" >&2
+    echo "        Run this to clean them up (preserves all your other local keys):" >&2
+    echo "          tmp=\$(mktemp) && jq 'del(.hooks, .statusLine)' \"$target\" > \"\$tmp\" && mv \"\$tmp\" \"$target\"" >&2
+    echo "  ────────────────────────────────────────────────────────────" >&2
+    echo "" >&2
   fi
-
-  local raw
-  raw=$(< "$template")
-  local rendered="${raw//\$HOME/$HOME}"
-
-  local rendered_canon
-  rendered_canon=$(printf '%s' "$rendered" | jq .)
-
-  local desired
-  if [[ -f "$target" ]]; then
-    if ! jq empty "$target" 2>/dev/null; then
-      local backup="${target}.bak-malformed-$(date +%Y%m%d-%H%M%S)"
-      mv "$target" "$backup"
-      echo "  WARN: $target was malformed JSON; moved to $backup, re-rendering fresh" >&2
-      desired="$rendered_canon"
-    else
-      local current
-      current=$(jq . "$target")
-      desired=$(jq -n \
-        --argjson e "$current" \
-        --argjson r "$rendered_canon" \
-        '$e * $r')
-      if [[ "$current" == "$desired" ]]; then
-        return 0
-      fi
-      local backup="${target}.bak-$(date +%Y%m%d-%H%M%S)"
-      cp "$target" "$backup"
-      echo "  re-rendered: merged $template -> $target (backup: $backup)" >&2
-    fi
-  else
-    desired="$rendered_canon"
-    mkdir -p "$(dirname "$target")"
-    echo "  rendered: $template -> $target" >&2
-  fi
-
-  printf '%s\n' "$desired" > "$target"
 }
 
 # ── Shared sources (portable across all AI tools) ─────────────────────
@@ -94,7 +67,6 @@ skills_source="$FRACTAL_AI_HOME/skills"
 
 # ── Claude-specific sources ───────────────────────────────────────────
 claude_settings_source="$FRACTAL_AI_HOME/claude/settings.json"
-claude_settings_local_template="$FRACTAL_AI_HOME/claude/settings.local.json.template"
 claude_hooks_source="$FRACTAL_AI_HOME/claude/hooks"
 claude_statusline_source="$FRACTAL_AI_HOME/claude/statusline-command.sh"
 
@@ -130,5 +102,4 @@ if [[ -f "$claude_statusline_source" ]]; then
   link_item "$claude_statusline_source" "$HOME/.claude/statusline-command.sh"
 fi
 
-# ── Claude-only: render settings.local.json from template ─────────────
-render_settings_local "$claude_settings_local_template" "$HOME/.claude/settings.local.json"
+warn_stale_settings_local

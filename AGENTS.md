@@ -30,5 +30,12 @@ When adding new content, decide first whether it's tool-agnostic (lives at root 
 - After editing source files, run `deploy/install.sh` (or `install.ps1`) to refresh
   symlinks. The script is idempotent and backs up any pre-existing real file before
   symlinking over it.
-- Machine-local Claude settings (hook commands, etc.) live in `~/.claude/settings.local.json`
-  and are not part of this repo.
+- Portable Claude settings (hooks, statusLine, theme, permissions, etc.) live in
+  `claude/settings.json` and are deployed by symlink. Use `~/.claude/...` paths in command
+  strings — Claude Code expands `~` at runtime, which keeps the file portable across
+  machines without a render step.
+- `~/.claude/settings.local.json` is **not** part of this repo. It's a per-machine,
+  user-managed override file scoped by Claude Code to the cwd ancestry — i.e. it only
+  loads for sessions whose cwd is under `$HOME`. Do not put portable hooks or statusLine
+  there; they will silently fail for sessions started outside `$HOME` (e.g. `/opt/...`).
+  Reserve it for genuinely machine-local permission allowlists and similar.

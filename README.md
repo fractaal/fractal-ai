@@ -12,8 +12,8 @@ A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported t
 ├── AGENTS.md                   # Meta: instructions for working ON this repo (not deployed)
 ├── skills/                     # Tool-agnostic skills, deployed to every supported tool
 ├── claude/                     # Claude Code-specific
-│   ├── settings.json           # Portable settings (no machine-specific paths)
-│   ├── settings.local.json.template  # Hooks + statusLine, $HOME-rendered per machine by install.sh
+│   ├── settings.json           # All portable Claude Code settings (hooks, statusLine, perms, prefs).
+│   │                           # Uses ~/... paths in command strings; Claude Code expands ~ at runtime.
 │   ├── hooks/                  # PreToolUse / Stop / PostToolUse hook scripts
 │   ├── statusline-command.sh   # Statusline (NASApunk ECAM display)
 │   └── sync-agents.sh          # Bridges select skills into ~/.claude/agents/
@@ -66,9 +66,13 @@ The install scripts symlink into the following locations, backing up any existin
 | `claude/hooks/` | `~/.claude/hooks` |
 | `claude/statusline-command.sh` | `~/.claude/statusline-command.sh` |
 
-`settings.json` here is the **portable** Claude Code settings — env vars, permission rules, plugins, and preferences that work on any machine. The hook command paths and statusline command are path-coupled (they reference absolute paths), so they live in `claude/settings.local.json.template`. `install.sh` renders this template per machine — substituting `$HOME` for the actual home directory — and deep-merges into `~/.claude/settings.local.json`. Top-level keys you add manually outside the template (e.g. `permissions.allow` entries, `enabledPlugins` overrides) are preserved across re-runs. **Caveat:** the merge replaces arrays wholesale, so custom entries *inside* `hooks` or `statusLine` (the template-managed sections) get overwritten on re-render — add such entries to the template instead. install.sh backs up the prior file to `*.bak-YYYYMMDD-HHMMSS` before any rewrite; malformed existing JSON is moved to `*.bak-malformed-*` and the template is rendered fresh.
+`claude/settings.json` is the single source of truth for portable Claude Code config — env vars, permissions, plugins, preferences, **and** the hooks + statusLine. Command strings use `~/...` paths so the same file works on any machine without a render step (Claude Code spawns hooks with `shell:true`, and `/bin/sh` tilde-expands the leading `~` at runtime).
 
-The Claude statusline expects `jq` and `perl` on `PATH`, plus a Nerd Font in your terminal. `jq` is also required by `install.sh` for the settings.local.json template merge.
+`~/.claude/settings.local.json` is **not** part of this repo. It's a per-machine, user-managed override that Claude Code scopes by cwd ancestry — only sessions whose cwd is under `$HOME` see it. Reserve it for genuinely machine-local entries (e.g. distro-specific permission allowlists). Do **not** put hooks or statusLine there; sessions started outside `$HOME` (e.g. `/opt/...`) won't load them.
+
+If a previous version of this repo's installer rendered hooks/statusLine into `~/.claude/settings.local.json`, `install.sh` will detect them and print a one-line `jq` cleanup command. Removing the stale entries is required — Claude Code merges hook arrays across precedence scopes, so leaving them causes every Stop/Edit to fire its hook twice.
+
+The Claude statusline expects `jq` and `perl` on `PATH`, plus a Nerd Font in your terminal. `install.sh` also uses `jq` (best-effort) to detect the legacy stale-keys condition above.
 
 ## License
 
