@@ -19,50 +19,20 @@ This is not a replacement for tests, linters, or CI. Those catch correctness. Th
 
 Fresh eyes matter. A reviewer that loaded the diff cold, with no memory of why each line was written the way it was, will apply the principles below honestly. A reviewer that has been in the conversation the whole time has an emotional investment in the current shape of the code. Every generic "code-reviewer" subagent in the industry relies on this isolation property. This skill is no different — it just has a stronger set of principles than the generic one.
 
-### How to dispatch on your current platform
+### Are you the main agent, or the dispatched reviewer?
 
-Every modern coding agent supports spawning a subagent or subprocess with its own clean context. Use whatever your platform calls that — and always pin the top-tier reasoning model (see **Model selection** below):
-
-- **Claude Code:** `Agent({ subagent_type: "general-purpose", model: "opus", prompt: "<this skill's content + the diff scope> "})`. This skill IS the reviewer — do not defer to another reviewer subagent type; pass this skill's content as the full review rubric in the prompt.
-- **Codex / headless CLI loops:** `codex exec --full-auto -m <top-tier-high-variant> "$(cat ~/.fractal-ai/skills/code-reviewer/SKILL.md) ... and now review: <scope>"`. Use the `-high` reasoning variant of the latest GPT-5 line (or equivalent `--reasoning-effort high` flag) — never the default/medium tier.
-- **Gemini CLI:** `gemini -m <top-tier-pro-or-deep-think> -p "..." --yolo`. Use the top Pro / Deep Think variant of the latest line — never `flash` or a mid-tier for review work.
-- **Copilot CLI / other:** Spawn a subagent via the platform's skill or agent dispatch mechanism. Pass the full content of this file along with the diff or files to review, and select the platform's top-tier reasoning model.
-- **Direct CLI invocation:** If the user runs this skill via a raw CLI one-shot (e.g., `claude -p --model opus '...'` or `codex exec -m <top-tier-high-variant> '...'`), the one-shot process IS the isolated context. That qualifies — as long as the model flag is pinned to the top tier.
-
-### Model selection
-
-**Always pin the most capable reasoning-tier model the platform offers.** Review is the bottleneck quality check — latency and token cost are not the constraint here. The whole point of this skill is catching the class of issues a faster/cheaper pass misses; running it on a mid-tier model defeats the purpose. This rule survives model churn; update the examples below when the tier leader changes, not the rule itself.
-
-Current tier leaders (as of 2026-04-16):
-
-- **Claude** — `opus` (currently `claude-opus-4-6`). Never `sonnet` or `haiku` for review.
-- **Codex** — the `-high` reasoning variant of the latest GPT-5 line (e.g., `gpt-5.4-high`), or equivalent `--reasoning-effort high` on whichever base model. Never the `-medium` / `-low` variants.
-- **Gemini** — the top Pro / Deep Think variant of the latest 2.x line. Never `flash`.
-
-If you can't tell which variant is the top tier on your platform, **ask the user before dispatching**. Do NOT fall back to a default/mid-tier model silently — that's the exact failure this rule exists to prevent.
-
-### What to pass to the subagent
-
-When dispatching, include ALL of the following in the subagent's prompt:
-
-1. **The full content of this skill file** (the subagent's rubric)
-2. **The review scope**: the exact diff to review, expressed as one of:
-   - `git diff <base>...<head>` output
-   - A list of changed files + their full current contents
-   - A GitHub PR URL (if the subagent has web access)
-3. **Any spec, plan, or issue description** the user provided — as context, NOT as the thing being validated. The diff is the source of truth; the spec tells the reviewer what the author was trying to do.
-4. **The user's own standards or pushback notes**, if the user has articulated them in the main conversation (e.g., "focus on naming" or "this touches our kernel layer so grep for layering violations").
-5. **A reminder**: "You are the subagent. Report findings back to the main agent. Do not ask clarifying questions mid-review — if something is ambiguous, flag it as a finding."
+- **Main agent:** dispatch this review to a subagent on your platform's native primitive (e.g. Claude Code's `Agent` tool with the matching `subagent_type` for code review, or whatever your CLI calls that). Pass it the diff scope, any relevant spec/plan, and the user's own emphasis. Pin the top-tier reasoning model your platform offers — review is the bottleneck quality check; mid-tier models miss exactly the smells this skill exists to catch. Then stop and wait for findings.
+- **Dispatched reviewer (this is you if your system prompt is this skill or the matching agent file):** you are already in the isolated context. Do NOT spawn anything further. Skip to the next section and review the diff yourself.
 
 ### If no subagent mechanism is available
 
-Explicitly tell the user: "This platform doesn't give me an isolated subagent mechanism, and this skill refuses to run in the main context because of the marking-your-own-homework failure mode. Please run this review in a separate `claude -p` / `codex exec` / whatever-your-CLI session." **Do NOT fall back to in-context review.** The fallback is not reviewing at all.
+Tell the user: "This platform doesn't give me an isolated subagent mechanism, and this skill refuses to run in the main context because of the marking-your-own-homework failure mode. Please run this review in a separate session." **Do NOT fall back to in-context review.** The fallback is not reviewing at all.
 
 ---
 
 ## From here on: you are the dispatched subagent
 
-Everything below is written for the subagent. If you are the main agent and you reached this line without dispatching, STOP and dispatch. If you are the subagent, continue.
+Everything below is written for the reviewer. If you are still the main agent here, you skipped the dispatch step — go back. If you are the reviewer, continue without spawning anything else.
 
 ---
 

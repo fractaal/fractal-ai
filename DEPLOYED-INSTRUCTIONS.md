@@ -30,6 +30,27 @@ DO NOT write subagent prompts that say "don't touch X" or "this is a SEPARATE fo
 
 A test suite that verifies string manipulation while the provider isn't wired is NOT verification. It is THEATER. Do not mistake theater for confidence.
 
+# 🚀 Default behavior: forward motion
+
+The user runs many AI agents in parallel and frequently steps away while you work. **Stop-and-wait without notification is the worst outcome — they may not return for hours.**
+
+Default mode: **continue making progress until blocked by a destructive/irreversible action that obviously needs user judgment.** At any decision point, the answer is almost always one of:
+
+1. **Continue.** Pick the most-likely-useful next step (probe a hypothesis, draft the next artifact, sketch the implementation, verify a claim, gather evidence) and do it. Wasted forward motion is cheap; wasted wall-clock is not. The user can redirect on the next turn.
+2. **`/notify`.** If you genuinely cannot proceed without a user decision, OR you're about to take a destructive/irreversible action, ping them via the `notify` skill and wait. **Never silently park the conversation.**
+
+Pause for explicit confirmation only on real blockers: destructive ops (`rm`/`reset`/`force-push`), shared-state writes (PR creation, message sending, infra changes), uploads to third-party services, credential/auth changes. The harness's "Executing actions with care" guidance enumerates these. Outside that list, the default is **go**.
+
+What this looks like in practice:
+
+- ❌ "Want me to do (a) X, (b) Y, or (c) Z?" as the only content of a turn → silent menu
+- ❌ Trailing "let me know if you'd like me to continue" → implicit park
+- ❌ Asking permission to take the next obvious-and-non-destructive step
+- ✅ "Going with X because [reason]; redirect if you'd rather Y." …then doing X
+- ✅ When the next step is genuinely high-risk: `/notify`, then wait
+
+Offering options is fine *alongside* forward motion ("I picked X; here's Y/Z if you'd prefer those instead"), never *instead of* it.
+
 # 🚨 Mandatory Skill Invocations
 
 These are NOT OPTIONAL. These are NOT "nice to have." Skipping these is a HARD FAILURE equivalent to shipping broken code to production.
@@ -64,7 +85,9 @@ The user runs multiple AI tools that share context via convention:
 
 # Cross-Agent Collaboration
 
-The user runs Claude, Codex, Gemini, and other agents. They are peers with different strengths — Claude for architecture and ideation, Codex for rigorous review and standards enforcement, Gemini for cheap fast second opinions. Reach across to peers when the task sits in their strength zone, especially for final code review (same-model self-review is the weakest form of review). See the `tmux-workers` skill for dispatch mechanics.
+The user runs Claude, Codex, Gemini, and other agents. They are peers with different strengths — Claude for architecture and ideation, Codex for rigorous review and standards enforcement, Gemini for cheap fast second opinions. Reach across to peers when the task sits in their strength zone, especially for final code review (same-model self-review is the weakest form of review).
+
+**Before you invoke another agent, ALWAYS load the `consulting-other-agents` skill.** It exists because of two repeated failure modes: (1) piping the agent's stdout through `tail`/`head` causes the response to never appear due to buffering until EOF, and (2) framing the query in a way that pre-confirms your premise destroys the entire value of consultation. Both have cost real wasted hours. The skill enforces query craft and safe output capture. For long-running, parallel, or interactive multi-agent dispatch mechanics, also see `tmux-workers`.
 
 # Engineering Logs
 
