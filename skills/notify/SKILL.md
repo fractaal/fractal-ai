@@ -1,20 +1,33 @@
 ---
 name: notify
 description: >-
-  Pop up a macOS dialog box and/or play a sound to grab the user's attention.
-  Use when the user says "ping me", "notify me", "alert me", "let me know",
-  "get my attention", or any variation of wanting to be notified. Also use
-  proactively when a long-running task completes and the user might have
-  context-switched away.
+  Pop up a desktop dialog box and/or play a sound to grab the user's
+  attention. Cross-platform — works on macOS and Linux (KDE/Hyprland via
+  zenity/kdialog). Use when the user says "ping me", "notify me",
+  "alert me", "let me know", "get my attention", or any variation of
+  wanting to be notified. Also use proactively when a long-running task
+  completes and the user might have context-switched away.
 ---
 
 # Notify
 
-Grab the user's attention with a macOS dialog box and sound.
+Grab the user's attention with a desktop dialog box and sound. Works on
+macOS (osascript + afplay) and Linux (zenity/kdialog + paplay).
+
+## ⚠️ "OK" means ACKNOWLEDGED, not approved
+
+Pressing the dialog button signals "I have seen this — let's talk." It
+is **not** consent to whatever question or action prompted the ping.
+After the dialog is dismissed, wait for the user's actual reply before
+proceeding with anything destructive or significant. The Linux dialog
+button is relabelled to `"Acknowledged — let's talk"` to make this
+unmistakable.
 
 ## How to use
 
-Run the script at `~/.fractal-ai/skills/notify/scripts/notify.sh`.
+Run the script at `~/.fractal-ai/skills/notify/scripts/notify.sh`. It
+auto-dispatches to `notify-macos.sh` on Darwin and `notify-linux.sh` on
+Linux. The CLI surface is identical across platforms.
 
 ### Quick usage
 
@@ -25,7 +38,8 @@ Run the script at `~/.fractal-ai/skills/notify/scripts/notify.sh`.
 # Custom title and sound
 ~/.fractal-ai/skills/notify/scripts/notify.sh -m "Build passed" -t "CI" -s Hero
 
-# Non-blocking notification center banner
+# Non-blocking notification center banner (macOS only — ignored on Linux,
+# which always shows a blocking modal)
 ~/.fractal-ai/skills/notify/scripts/notify.sh -m "FYI: deploy complete" --style notification
 
 # Urgent — repeat the sound 3 times
@@ -41,7 +55,7 @@ Run the script at `~/.fractal-ai/skills/notify/scripts/notify.sh`.
 |------|---------|-------------|
 | `-m`, `--message` | *(required)* | The message to display |
 | `-t`, `--title` | `Agent Ping` | Dialog/notification title |
-| `-s`, `--sound` | `Glass` | macOS sound: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink |
+| `-s`, `--sound` | `Glass` | Sound name. macOS: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink. On Linux these names are mapped to freedesktop sounds (Glass→bell, Basso/Sosumi→dialog-error, Hero→complete, Ping→message, etc.); a freedesktop name (`bell`, `complete`, `dialog-error`) or absolute path also works. |
 | `--style` | `dialog` | `dialog` (blocking modal) or `notification` (banner, non-blocking) |
 | `--repeat` | `1` | How many times to play the sound |
 | `--loop` | off | Sound loops infinitely until the dialog is dismissed. Use for P0/critical alerts |
@@ -55,11 +69,12 @@ Run the script at `~/.fractal-ai/skills/notify/scripts/notify.sh`.
 ## Guidelines
 
 - Default to `dialog` style — it's modal and impossible to miss.
-- For informational/non-urgent pings, use `--style notification`.
+- **Linux always shows a blocking modal.** `--style notification` is accepted by the CLI for cross-platform parity but is silently ignored on Linux (passive banners get missed and were removed deliberately). macOS still honors `--style notification` for low-priority pings.
 - For urgent things, use `--repeat 3` and a strong sound like `Basso` or `Sosumi`.
-- For critical/P0 situations, use `--loop -s Sosumi` — the sound will blare nonstop until the user clicks OK. This is the nuclear option. Use it when something is genuinely on fire.
+- For critical/P0 situations, use `--loop -s Sosumi` — the sound will blare nonstop until the user dismisses the dialog. This is the nuclear option. Use it when something is genuinely on fire.
 - **Sound choice for `--loop`:** Use `Sosumi` or `Ping` — they loop cleanly. Avoid `Basso` for looping (it sounds awful on repeat).
 - Keep messages short and actionable.
+- **Never treat dialog dismissal as a "yes."** The OK / "Acknowledged" button only confirms the user saw the popup. Any actual answer comes in the next chat turn — wait for it before doing anything destructive.
 
 ### Message content — IMPORTANT
 
