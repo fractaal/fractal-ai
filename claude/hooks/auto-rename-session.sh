@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Stop hook: re-engages the agent to give the session a meaningful kebab-case
-# name (and re-renames as the session evolves).
+# Stop hook: re-engages the agent to give the session a meaningful name —
+# optionally prefixed with `[In Progress] / [Blocked] / [Complete]` to flag
+# the work's current state — and re-renames as the session evolves.
 #
 # Triggers:
 #   1. IMMEDIATE — session name is "bare" (empty, UUID, sessionId prefix, or
@@ -115,13 +116,32 @@ esac
 instruction=$(cat <<EOF
 Auto-rename hook ($trigger_reason): $framing
 
-Pick a 3-7 word kebab-case name that reflects this session's actual focus and outcome — not a generic descriptor. The name should still make sense to Ben in 6 weeks when he's scrolling the session list. Lean specific over broad.
+Pick a 3-7 word title for this session that reflects its actual focus and outcome — not a generic descriptor. Should still make sense to Ben in 6 weeks when he's scrolling the session list. Lean specific over broad.
 
-Then persist it by running this Bash command (replace YOUR-NAME-HERE with your chosen name; do not change anything else):
+Optionally prefix the title with one of these status brackets to flag where the work stands (skip the prefix if no status clearly applies — e.g. session is still in early exploration):
 
-  bash ~/.claude/hooks/scripts/apply-session-rename.sh '$registry_file' '$transcript_path' YOUR-NAME-HERE
+  [In Progress]  — active, mid-thread, loose ends still hanging
+  [Blocked]      — waiting on a decision, an external dep, or an open outage
+  [Complete]     — the work is done, no follow-up pending
 
-After the rename succeeds, stop normally — do not chain additional work. The hook tracks state in $STATE_FILE; it will auto-detect your rename on the next fire and reset the cumulative-turn counter, so you don't need to touch the state file directly.
+Examples:
+  Vertex proxy POSTHOG_KEY wiring
+  [In Progress] Hyprland rice overlay bootstrap
+  [Complete] Symphony agency UI image-upload retry loop
+
+Persist your decision with ONE of the following — pick whichever fits, no need to retype the existing name if you don't have to:
+
+  # Full rename (use this when the title needs to change).
+  bash ~/.claude/hooks/scripts/apply-session-rename.sh '$registry_file' '$transcript_path' 'YOUR-NAME-HERE'
+
+  # Name still fits — just confirm. No-op rename, resets the cumulative-turn counter.
+  bash ~/.claude/hooks/scripts/apply-session-rename.sh '$registry_file' '$transcript_path' --confirm
+
+  # Title is fine, only the status changed — flip just the [Bracket] prefix.
+  # Valid values: 'In Progress', 'Blocked', 'Complete', or 'none' to drop an existing prefix.
+  bash ~/.claude/hooks/scripts/apply-session-rename.sh '$registry_file' '$transcript_path' --status 'Complete'
+
+After it succeeds, stop normally — do not chain additional work. The hook tracks state in $STATE_FILE; the script resets the cumulative-turn counter for you, so you don't need to touch the state file directly.
 EOF
 )
 
