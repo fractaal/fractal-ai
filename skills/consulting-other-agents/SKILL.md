@@ -29,7 +29,7 @@ copy one of these exactly and substitute only the prompt-file path.**
 
 ```bash
 # Write your prompt to a file FIRST, then invoke.
-codex exec --full-auto \
+codex exec --dangerously-bypass-approvals-and-sandbox \
   -m gpt-5.5 \
   -c model_reasoning_effort=high \
   --skip-git-repo-check \
@@ -39,10 +39,20 @@ codex exec --full-auto \
 
 Non-negotiables:
 
-- **`--full-auto`** (or the equivalent `--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check`). Without it, codex blocks
-  forever on interactive approval prompts and only emits the cryptic
-  `Reading additional input from stdin...` to the output file. Looks
-  exactly like "still working." Is not.
+- **`--dangerously-bypass-approvals-and-sandbox`**. Codex's own help text
+  says this flag is "intended solely for running in environments that are
+  externally sandboxed" — which is what Ben's machine is (we're the
+  external sandbox). DO NOT use `--full-auto`: it puts Codex in
+  `workspace-write` sandbox mode, which silently narrows the writable
+  filesystem (Codex couldn't `git worktree add` to a sibling dir, couldn't
+  edit `agent-worker/` while launched from the repo root, returned
+  "Read-only file system" errors — *real cost paid on 2026-05-13 wiki
+  semantic search work*). The trinity model treats Codex as a peer
+  engineer with full repo authority; sandboxing them to a subset of the
+  filesystem breaks that contract. Without the flag entirely, codex
+  blocks forever on interactive approval prompts and only emits the
+  cryptic `Reading additional input from stdin...`. Looks exactly like
+  "still working." Is not.
 - **Prompt via stdin redirect (`- < /tmp/prompt.md`)**, not as a quoted
   positional argument. Long prompts as `"$(cat …)"` are fragile under
   shell expansion (backticks, dollar signs, embedded quotes in your
@@ -64,7 +74,7 @@ proven pattern is `tee` inside `tmux-workers`:
 
 ```bash
 tmux send-keys -t "$PANE" \
-  "codex exec --full-auto -m gpt-5.5 -c model_reasoning_effort=high - < /tmp/prompt.md 2>&1 | tee /tmp/codex.out" Enter
+  "codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-5.5 -c model_reasoning_effort=high - < /tmp/prompt.md 2>&1 | tee /tmp/codex.out" Enter
 ```
 
 ### `claude -p` — peer Claude (preferred for taste / frontend / writing review)
@@ -84,7 +94,7 @@ unless you've aliased it. For long sessions, prefer `tmux-workers`'
 # Session IDs live in ~/.codex/sessions/YYYY/MM/DD/<uuid>.jsonl
 CODEX_SESSION=$(ls -t ~/.codex/sessions/$(date +%Y/%m/%d)/ 2>/dev/null \
   | head -1 | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-codex exec resume "$CODEX_SESSION" --full-auto \
+codex exec resume "$CODEX_SESSION" --dangerously-bypass-approvals-and-sandbox \
   -c model_reasoning_effort=high \
   - < /tmp/followup-prompt.md \
   > /tmp/codex-followup.out 2>&1

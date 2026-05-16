@@ -148,10 +148,64 @@ When the user asks for /goal text, produce:
 In those cases, suggest the user skip /goal and just iterate with normal
 conversation.
 
+## Coordination guards for goals that drive peer agents
+
+When a /goal coordinates long-running peer-agent work (Codex CLI,
+peer Claude, etc.) — i.e. the model's job is to brief, kick off,
+and verify, while the bulk of the implementation is happening in
+another agent — specific failure modes recur. Bake guards against
+them INTO the goal text itself, because the goal text is re-injected
+every Stop-hook firing and so the guards stay in front of the model
+the entire time the loop is running.
+
+The known failure modes (each backed by a feedback memory under
+`~/.claude/projects/<project>/memory/` — reference these by name in
+the goal text so the model can recall and act on them):
+
+1. **"In-flight" status spam.** When the Stop hook fires while a
+   background agent is mid-task, do NOT produce a chain of single-line
+   "still in flight" responses. Either (a) do real value-add work that
+   doesn't race with the agent (pre-draft the next brief, audit code
+   the agent has already materialized, update docs/memory), or (b)
+   block on the PID via `tail --pid=PID -f /dev/null` inside a
+   foreground Bash call so the turn doesn't end. See
+   `feedback_blocking_wait_on_background_pid.md`. **Big asterisk:**
+   blocking is the LAST resort — useful work always wins.
+
+2. **Diff-shaped briefs muzzle peer agents.** Briefing Codex with
+   "current code: X, change to: Y" or "do only these N patches,
+   nothing else" wastes the engineer's code-level insight and demotes
+   them from peer to hands. Brief at the INTENT level — what to
+   achieve and why — and let the peer decide how. See
+   `feedback_peer_briefing_intent_level.md`. The project CLAUDE.md is
+   usually explicit too: "DO NOT write subagent prompts that say
+   'don't touch X' or 'this is a SEPARATE follow-up task.'"
+
+3. **Wrong Codex invocation sandboxes the agent.** Use
+   `codex exec --dangerously-bypass-approvals-and-sandbox`, NOT
+   `--full-auto`. The latter puts Codex in `workspace-write` sandbox
+   and silently blocks writes to sibling directories or worktree
+   creation — Codex's only signal is a cryptic "Read-only file
+   system" error mid-flight. The `consulting-other-agents` skill
+   carries the canonical invocation.
+
+4. **Mixed-location chunks.** If a multi-chunk feature splits across
+   the primary checkout + a worktree, you end up with an awkward
+   deploy sequence (commit one location first, then merge the other).
+   Pick the location ONCE for the whole feature, up front. See
+   `feedback_worktree_consistency_across_chunks.md`.
+
+The recommended pattern: a peer-coordinating goal includes an explicit
+"🚨 Coordination guards" block near the top that names each guard and
+references the relevant feedback memory. This makes the guards
+operative every turn the Stop hook fires.
+
 ## Related skills
 
 - `notify`: invoked from inside the model when a /goal is genuinely
   blocked on user action. The "If blocked, /notify" idiom routes to this.
 - `consulting-other-agents`: if the goal involves a peer-review step
   (Codex / Claude / Gemini), include that explicitly in the goal so the
-  model doesn't try to skip it.
+  model doesn't try to skip it. Also carries the canonical
+  `codex exec` invocation (with the `--dangerously-bypass-approvals-and-sandbox`
+  flag — see guard #3 above).
