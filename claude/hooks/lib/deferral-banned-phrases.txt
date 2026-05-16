@@ -1,0 +1,50 @@
+# deferral-banned-phrases.txt
+#
+# Banned deferral phrases consumed by response-deferral-phrase-gate.sh.
+# One phrase per line. Comments (lines starting with `#`) and blank lines are
+# ignored. Phrases are matched case-insensitively as fixed strings (grep -iF)
+# against the last assistant message in the transcript, code blocks excluded.
+#
+# The "pre-existing" dismissal pattern is a regex, not a fixed phrase, and
+# lives in deferral-pre-existing-regex.txt.
+#
+# This file is the single source of truth -- edit here to tune the gate.
+
+# Original hook-enforced set
+future change
+out of scope
+deliberate accepted cost
+we will need to
+later we can
+
+# Aspirational-gap acceptance
+accept the gap
+accept the slight
+accept the small
+accept the aspirational
+accept the cosmetic
+
+# User-judgment dump
+left for user judgment
+
+# MVP-mindset acceptance
+for now we'll just
+good enough for v1
+good enough for now
+we can revisit this
+tactical fix only
+minimum viable fix
+non-blocking
+not blocking
+cost of fixing isn't worth
+MVP mindset
+ship now, fix later
+not worth the dance
+trivial enough to skip
+
+# Producer-gap shortcuts
+file follow-up if load-bearing
+workaround keys on
+work around by keying
+proves insufficient post-merge
+structural and pre-existing

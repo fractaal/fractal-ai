@@ -1,0 +1,14 @@
+# deferral-pre-existing-regex.txt
+#
+# Regex for the "pre-existing" dismissal pattern. Single line, no surrounding
+# quotes. Matched case-insensitively (grep -iE) by response-deferral-phrase-gate.sh.
+#
+# Softer treatment than the literal phrase list: only flagged when used as a
+# dismissal (followed by "bug", "issue", "limitation", ...; or preceded by
+# a skip/skip-fix verb), so legit prose like "pre-existing test infrastructure"
+# passes through.
+#
+# Lines starting with `#` and blank lines are ignored; the first non-comment
+# line is the regex.
+
+pre-existing.*(bug|issue|limitation|problem|defect|skip|not (addressing|fix))|pre-existing\.\s*$|pre-existing[,]

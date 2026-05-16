@@ -38,6 +38,11 @@
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/auto-rename-session.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/response-deferral-phrase-gate.sh",
+            "timeout": 10
           }
         ]
       }
