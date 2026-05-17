@@ -58,28 +58,44 @@ done < "$REGEX_FILE"
 
 if [[ ${#BANNED_PHRASES[@]} -eq 0 ]]; then exit 0; fi
 
-# Find the last assistant message JSONL line in the transcript.
-LAST_ASSISTANT_LINE=$(tac "$TRANSCRIPT" 2>/dev/null | while IFS= read -r LINE; do
-  ROLE=$(echo "$LINE" | jq -r '(.message.role // .role) // empty' 2>/dev/null || echo "")
-  if [[ "$ROLE" == "assistant" ]]; then
-    echo "$LINE"
-    break
-  fi
-done)
+# Extract concatenated text from the last assistant message in the transcript.
+# Echoes the text (possibly empty). Re-reads the file on every call so the
+# flush-race retry loop below sees fresh content.
+extract_last_assistant_text() {
+  local last_line
+  last_line=$(tac "$TRANSCRIPT" 2>/dev/null | while IFS= read -r LINE; do
+    ROLE=$(echo "$LINE" | jq -r '(.message.role // .role) // empty' 2>/dev/null || echo "")
+    if [[ "$ROLE" == "assistant" ]]; then
+      echo "$LINE"
+      break
+    fi
+  done)
+  [[ -z "$last_line" ]] && return 0
+  # Concatenate text content blocks (skip tool_use, thinking, etc).
+  echo "$last_line" | jq -r '
+    (.message.content // .content // []) as $c
+    | if ($c | type) == "array" then
+        $c | map(select(type == "object" and .type == "text") | .text) | join("\n")
+      elif ($c | type) == "string" then
+        $c
+      else
+        ""
+      end
+  ' 2>/dev/null || echo ""
+}
 
-if [[ -z "$LAST_ASSISTANT_LINE" ]]; then exit 0; fi
-
-# Extract concatenated text content from the message (skip tool_use, thinking, etc).
-TEXT=$(echo "$LAST_ASSISTANT_LINE" | jq -r '
-  (.message.content // .content // []) as $c
-  | if ($c | type) == "array" then
-      $c | map(select(type == "object" and .type == "text") | .text) | join("\n")
-    elif ($c | type) == "string" then
-      $c
-    else
-      ""
-    end
-' 2>/dev/null || echo "")
+# A Stop fires after the assistant's final TEXT message, but that message is
+# flushed to the transcript JSONL asynchronously. If this hook wins the race it
+# sees only the preceding thinking/tool_use line -> empty text -> a false pass.
+# (Observed: session 1047a397 stop#11 -- "out of scope" sailed through.)
+# So treat empty text as a possible mid-flush read: retry a few times, re-reading
+# the file each pass, before concluding there is genuinely nothing to scan.
+TEXT=""
+for ATTEMPT in 1 2 3 4; do
+  TEXT=$(extract_last_assistant_text)
+  [[ -n "$TEXT" ]] && break
+  [[ "$ATTEMPT" -lt 4 ]] && sleep 0.15
+done
 
 if [[ -z "$TEXT" ]]; then exit 0; fi
 
