@@ -2,11 +2,13 @@
 name: consulting-other-agents
 description: >-
   INVOKE/LOAD BEFORE asking another AI agent for an opinion, second pass, or
-  cross-check — Codex CLI, a peer Claude via tmux, Gemini, sgpt, etc. Two
+  cross-check — Codex CLI, a peer Claude via tmux, Gemini, sgpt, etc. Three
   failure modes this skill exists to prevent: (1) piping the agent's stdout
-  through `tail`/`head` so the response never appears because buffering, and
+  through `tail`/`head` so the response never appears because buffering,
   (2) framing the query in a way that confirms your premise instead of
-  inviting disagreement. Both have caused real wasted hours.
+  inviting disagreement, and (3) briefing the peer at the diff/line level so
+  it just executes your pre-decided solution instead of applying its own
+  judgment. Each one wastes the consultation.
   Keyword triggers: "ask codex", "consult codex", "second opinion", "cross-check
   with codex", "spawn a peer agent", "have gemini check", "what does codex
   think", "bring up codex", "invoke another agent".
@@ -16,7 +18,7 @@ description: >-
 
 You are about to ask Codex, a peer Claude, Gemini, or another agent CLI for
 input — a code review, a doc lookup, a cross-check on a tricky semantic, a
-second opinion before shipping. This skill prevents the two specific ways you
+second opinion before shipping. This skill prevents the specific ways you
 keep wasting that consultation.
 
 ## Canonical invocations (use these verbatim — do not improvise)
@@ -46,8 +48,7 @@ Non-negotiables:
   `workspace-write` sandbox mode, which silently narrows the writable
   filesystem (Codex couldn't `git worktree add` to a sibling dir, couldn't
   edit `agent-worker/` while launched from the repo root, returned
-  "Read-only file system" errors — *real cost paid on 2026-05-13 wiki
-  semantic search work*). The trinity model treats Codex as a peer
+  "Read-only file system" errors). The trinity model treats Codex as a peer
   engineer with full repo authority; sandboxing them to a subset of the
   filesystem breaks that contract. Without the flag entirely, codex
   blocks forever on interactive approval prompts and only emits the
@@ -100,7 +101,7 @@ codex exec resume "$CODEX_SESSION" --dangerously-bypass-approvals-and-sandbox \
   > /tmp/codex-followup.out 2>&1
 ```
 
-## The two failure modes this skill prevents
+## The failure modes this skill prevents
 
 ### Failure 1 — piping agent stdout through `tail`/`head`
 
@@ -215,6 +216,57 @@ If the premise is wrong, say so plainly. I'd rather scrap and restart
 than ship a fix to the wrong thing.
 ```
 
+### Failure 3 — muzzling the peer
+
+You think this is a thorough, helpful brief:
+
+> "Patch the embeddings module. Do ONLY these 4 things, nothing else:
+> (1) set `autoTruncate=false` in the request body, (2) accept both
+> `token_count` and `tokenCount` in the response, (3) assert the vector
+> length matches the configured dimension, (4) return a 400 (not a 500)
+> on a non-dict request body. Each covered by a new test."
+
+**It is not a brief. It is you writing the code and using the peer as a
+typist.**
+
+A diff-shaped brief — exact strings, full signatures, "change line X to
+Y", "do ONLY these N things", "don't touch Z", "that's a separate task"
+— strips the peer of the one thing you invoked them for: code-level
+judgment you do not have. A peer handed "(1) set `autoTruncate=false`"
+cannot tell you `autoTruncate` might belong as a caller-supplied
+parameter, cannot spot the fifth bug sitting next to your four, cannot
+flag an integration change you never thought to ask for. You pre-decided
+the decomposition; all the peer can do is type it — and then the
+consultation is worth nothing, because you would have gotten the same
+result writing it yourself.
+
+This is easy to miss because a brief feels *most* thorough exactly when
+it is *most* over-specified: four precise patches read as diligence.
+They are the opposite — they are you doing the engineer's thinking and
+leaving them no room to do it better, or to tell you that you are wrong.
+
+**Brief at intent, not diff.** State what to achieve and why; let the
+peer decide how. Before sending, scan the brief and rewrite or delete
+every line that matches the left column:
+
+| ❌ Muzzle — rewrite it or cut it | ✅ Intent — what a brief should be |
+|---|---|
+| "Change line 292 to `raise HTTPException(400, …)`" | "A non-dict request body should fail loud as a 400, not crash into a 500." |
+| Exact `old_string` → `new_string` diff blocks | "The API truncates oversized input silently by default — wrong for an indexer. Address it." |
+| Full method signatures with type hints | "Match the lifecycle pattern already in `src/main.py`." |
+| "Do ONLY these N things, nothing else" | "Here is the full picture, and the parts I think matter most — your call on the rest." |
+| "Don't touch X" / "X is a separate task" | *(delete it — give the full context and let the peer flag what actually connects)* |
+| Test-by-test "add a test that asserts X" | "This needs test coverage; you decide which cases matter." |
+
+Constraints, intent, and pointers to existing patterns — yes, always.
+Implementation choices belong to the engineer. If a particular shape is
+genuinely load-bearing, pseudocode the *flow*, not the *signatures*, and
+say why it has to be that way.
+
+A leading question (Failure 2) forecloses the peer's *answer*; a muzzling
+brief forecloses the peer's *work*. Same skill, same waste — the
+consultation thrown away before it can fire.
+
 ## When to consult other agents at all
 
 Cross-agent consultation has a real cost (tokens, latency, your attention).
@@ -285,6 +337,10 @@ Before you hit Enter on a `codex exec` (or equivalent), confirm:
       "is the premise wrong," or explicit "here's what I haven't
       verified" disclaimers. Does not bake your conclusion into the
       question.
+- [ ] **The brief is intent-level, not diff-level.** Scan it for exact
+      strings, full signatures, `old_string`→`new_string` blocks, "do
+      only these N things", "don't touch X", "separate task". Every
+      match → rewrite at intent level or delete. (See Failure 3.)
 - [ ] **You can act on either answer.** If the consultation comes back
       "you're wrong about X," do you have the time/context to redirect?
       If not, you're not really consulting — you're confirming.
