@@ -93,6 +93,45 @@ If the feature consumes data from other services:
 - Is the field you're reading actually populated?
 - What happens if it's missing/null?
 
+### Check shared mutable state and concurrency
+
+If the feature creates or writes a file, index, record, counter, or any
+artifact that more than one writer can touch, design the coordination
+BEFORE writing code — not after the first race surfaces.
+
+"More than one writer" is broader than it first looks. It includes:
+
+- Multiple instances of the same service — anything horizontally scaled
+  runs as N copies, not one.
+- A request handler, a background task, and a one-shot script that all
+  write the same artifact — that is three writers, not one.
+- Multiple threads, async tasks, or processes inside a single instance.
+- A periodic/scheduled job and a live code path touching the same store.
+
+For every shared writable artifact, answer three questions:
+
+1. **Who writes it?** Enumerate every code path and every running
+   process that writes it. If you cannot list the writers, you cannot
+   coordinate them — and you will find the ones you missed only when
+   they race in production.
+2. **What coordinates the writers?** Name the primitive: a lock, an
+   atomic replace/rename, a lease, a transaction, a compare-and-swap, or
+   a single-writer-by-construction guarantee.
+3. **Does that primitive actually hold where the code runs?** This is
+   the step that gets skipped, and it is where the bugs live. A
+   primitive that works in one process or on a local disk can be a
+   silent no-op in the real topology: an in-process lock coordinates
+   only its own process and nothing across instances; an OS-level file
+   lock can do nothing on a networked or shared filesystem; whether a
+   write is truly "atomic" depends on the specific filesystem or store.
+   Verify against the real runtime and storage, not your dev box.
+
+If you cannot name every writer AND name a coordination primitive that
+demonstrably holds in the deployment environment, you are not ready to
+write this code. Coordinating one writer at a time — and discovering the
+next unprotected writer only when it races — is how a single design pass
+turns into a multi-round spiral.
+
 ---
 
 ## Phase 3: Confirm Design Alignment
@@ -172,5 +211,6 @@ You may proceed to implementation ONLY when:
 5. You've confirmed your approach aligns with the system's architecture
 6. You've listed your assumptions and verified each one
 7. If decomposing, every subtask is end-to-end and there are no gaps
+8. If the feature touches shared mutable state, you've enumerated every writer and verified the coordination primitive holds in the real deployment environment
 
 If ANY of these are incomplete, you are not ready to write code. Do the research. It's faster than debugging a wrong assumption 3 hours into implementation.
