@@ -70,6 +70,9 @@ claude_settings_source="$FRACTAL_AI_HOME/claude/settings.json"
 claude_hooks_source="$FRACTAL_AI_HOME/claude/hooks"
 claude_statusline_source="$FRACTAL_AI_HOME/claude/statusline-command.sh"
 
+# ── Pi-specific sources ───────────────────────────────────────────────
+pi_extensions_source="$FRACTAL_AI_HOME/pi/extensions"
+
 # ── Shared: deploy DEPLOYED-INSTRUCTIONS.md as AGENTS.md / CLAUDE.md ──
 if [[ -f "$deployed_instructions_source" ]]; then
   link_item "$deployed_instructions_source" "$HOME/.codex/AGENTS.md"
@@ -100,6 +103,11 @@ fi
 
 if [[ -f "$claude_statusline_source" ]]; then
   link_item "$claude_statusline_source" "$HOME/.claude/statusline-command.sh"
+fi
+
+# ── Pi-only: extensions ───────────────────────────────────────────────
+if [[ -d "$pi_extensions_source" ]]; then
+  link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
 fi
 
 warn_stale_settings_local
