@@ -11,6 +11,7 @@ const DEFAULT_MAX_LINE_BYTES = 4096;
 
 type MonitorStatus = "running" | "exited" | "failed" | "error" | "stopped";
 type MonitorStream = "stdout" | "stderr" | "monitor";
+type StatusUiContext = { hasUI: boolean; ui: { setStatus: (key: string, value?: string) => void } };
 
 interface LineEntry {
 	time: string;
@@ -211,6 +212,39 @@ function stopMonitor(pi: ExtensionAPI, monitor: Monitor, signal: NodeJS.Signals 
 
 export default function monitorExtension(pi: ExtensionAPI) {
 	const monitors = new Map<string, Monitor>();
+	let latestStatusCtx: StatusUiContext | undefined;
+
+	function rememberUi(ctx: StatusUiContext) {
+		if (ctx.hasUI) latestStatusCtx = ctx;
+	}
+
+	function shortLabel(label: string, max = 34) {
+		return label.length <= max ? label : `${label.slice(0, max - 1)}…`;
+	}
+
+	function formatMonitorStatus() {
+		const active = [...monitors.values()].filter((monitor) => monitor.status === "running");
+		if (active.length === 0) return undefined;
+
+		if (active.length === 1) {
+			const monitor = active[0]!;
+			return `${monitor.stopRequested ? "monitor stopping" : "monitor"}: ${shortLabel(monitor.name)}`;
+		}
+
+		const labels = active
+			.slice(0, 2)
+			.map((monitor) => shortLabel(monitor.name, 18))
+			.join(", ");
+		const suffix = active.length > 2 ? ` +${active.length - 2}` : "";
+		return `monitors: ${active.length} running (${labels}${suffix})`;
+	}
+
+	function updateMonitorStatus(ctx?: StatusUiContext) {
+		if (ctx) rememberUi(ctx);
+		const ui = ctx?.hasUI ? ctx.ui : latestStatusCtx?.hasUI ? latestStatusCtx.ui : undefined;
+		if (!ui) return;
+		ui.setStatus("monitor", formatMonitorStatus());
+	}
 
 	function cleanupAll() {
 		for (const monitor of monitors.values()) {
@@ -230,8 +264,10 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		monitors.clear();
 	}
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
+		if (ctx.hasUI) ctx.ui.setStatus("monitor", undefined);
 		cleanupAll();
+		latestStatusCtx = undefined;
 	});
 
 	pi.registerTool({
@@ -258,6 +294,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			["command"],
 		),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			rememberUi(ctx);
 			const id = randomUUID().slice(0, 8);
 			const cwd = resolveCwd(ctx.cwd, params.cwd);
 			const child = spawn("/bin/bash", ["-lc", params.command], {
@@ -291,6 +328,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			};
 
 			monitors.set(id, monitor);
+			updateMonitorStatus(ctx);
 
 			monitor.stdoutReader = createInterface({ input: child.stdout });
 			monitor.stderrReader = createInterface({ input: child.stderr });
@@ -302,6 +340,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				monitor.exitedAt = new Date().toISOString();
 				enqueueLine(pi, monitor, "monitor", `failed to start: ${error.message}`);
 				flushPending(pi, monitor);
+				if (!monitor.shutdown) updateMonitorStatus(ctx);
 			});
 
 			child.on("close", (code, signal) => {
@@ -313,6 +352,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				monitor.signal = signal;
 				enqueueLine(pi, monitor, "monitor", `exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`);
 				flushPending(pi, monitor);
+				if (!monitor.shutdown) updateMonitorStatus(ctx);
 			});
 
 			return {
@@ -346,7 +386,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			},
 			["id"],
 		),
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			rememberUi(ctx);
 			const monitor = monitors.get(params.id);
 			if (!monitor) {
 				return { content: [{ type: "text" as const, text: `No monitor found for id ${params.id}.` }] };
@@ -371,7 +412,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		description: "List all known background monitors in this Pi process.",
 		promptSnippet: "List all known background monitors in this Pi process.",
 		parameters: objectSchema({}),
-		async execute() {
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			rememberUi(ctx);
 			const result = [...monitors.values()].map((monitor) => summarizeMonitor(monitor, 0));
 			return {
 				content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
@@ -392,7 +434,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			},
 			["id"],
 		),
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			rememberUi(ctx);
 			const monitor = monitors.get(params.id);
 			if (!monitor) {
 				return { content: [{ type: "text" as const, text: `No monitor found for id ${params.id}.` }] };
@@ -404,6 +447,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			const signal = params.signal || "SIGTERM";
 			stopMonitor(pi, monitor, signal);
 			flushPending(pi, monitor);
+			updateMonitorStatus(ctx);
 			return {
 				content: [{ type: "text" as const, text: `Sent ${signal} to monitor ${monitor.name} (${params.id}).` }],
 				details: summarizeMonitor(monitor, 0),
