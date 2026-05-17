@@ -11,7 +11,13 @@ const DEFAULT_MAX_LINE_BYTES = 4096;
 
 type MonitorStatus = "running" | "exited" | "failed" | "error" | "stopped";
 type MonitorStream = "stdout" | "stderr" | "monitor";
-type StatusUiContext = { hasUI: boolean; ui: { setStatus: (key: string, value?: string) => void } };
+type StatusUiContext = {
+	hasUI: boolean;
+	ui: {
+		setStatus: (key: string, value?: string) => void;
+		theme?: { fg?: (color: string, text: string) => string };
+	};
+};
 
 interface LineEntry {
 	time: string;
@@ -239,11 +245,17 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		return `monitors: ${active.length} running (${labels}${suffix})`;
 	}
 
+	function colorMonitorStatus(ctx: StatusUiContext | undefined, text: string) {
+		return ctx?.ui.theme?.fg?.("accent", text) ?? `\x1b[36m${text}\x1b[0m`;
+	}
+
 	function updateMonitorStatus(ctx?: StatusUiContext) {
 		if (ctx) rememberUi(ctx);
-		const ui = ctx?.hasUI ? ctx.ui : latestStatusCtx?.hasUI ? latestStatusCtx.ui : undefined;
+		const statusCtx = ctx?.hasUI ? ctx : latestStatusCtx?.hasUI ? latestStatusCtx : undefined;
+		const ui = statusCtx?.ui;
 		if (!ui) return;
-		ui.setStatus("monitor", formatMonitorStatus());
+		const status = formatMonitorStatus();
+		ui.setStatus("monitor", status ? colorMonitorStatus(statusCtx, status) : undefined);
 	}
 
 	function cleanupAll() {
