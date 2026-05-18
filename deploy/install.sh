@@ -71,6 +71,7 @@ claude_hooks_source="$FRACTAL_AI_HOME/claude/hooks"
 claude_statusline_source="$FRACTAL_AI_HOME/claude/statusline-command.sh"
 
 # ── Pi-specific sources ───────────────────────────────────────────────
+pi_settings_source="$FRACTAL_AI_HOME/pi/settings.json"
 pi_extensions_source="$FRACTAL_AI_HOME/pi/extensions"
 
 # ── Shared: deploy DEPLOYED-INSTRUCTIONS.md as AGENTS.md / CLAUDE.md ──
@@ -78,6 +79,7 @@ if [[ -f "$deployed_instructions_source" ]]; then
   link_item "$deployed_instructions_source" "$HOME/.codex/AGENTS.md"
   link_item "$deployed_instructions_source" "$HOME/.opencode/AGENTS.md"
   link_item "$deployed_instructions_source" "$HOME/.claude/CLAUDE.md"
+  link_item "$deployed_instructions_source" "$HOME/.pi/agent/AGENTS.md"
   link_item "$deployed_instructions_source" "$HOME/.gemini/AGENTS.md"
   link_item "$deployed_instructions_source" "$HOME/.gemini/CLAUDE.md"
   link_item "$deployed_instructions_source" "$HOME/.augment/AGENTS.md"
@@ -88,6 +90,7 @@ if [[ -d "$skills_source" ]]; then
   link_item "$skills_source" "$HOME/.codex/skills"
   link_item "$skills_source" "$HOME/.opencode/skills"
   link_item "$skills_source" "$HOME/.claude/skills"
+  link_item "$skills_source" "$HOME/.pi/agent/skills"
   link_item "$skills_source" "$HOME/.gemini/skills"
   link_item "$skills_source" "$HOME/.augment/skills"
 fi
@@ -105,7 +108,11 @@ if [[ -f "$claude_statusline_source" ]]; then
   link_item "$claude_statusline_source" "$HOME/.claude/statusline-command.sh"
 fi
 
-# ── Pi-only: extensions ───────────────────────────────────────────────
+# ── Pi-only: settings.json, extensions ────────────────────────────────
+if [[ -f "$pi_settings_source" ]]; then
+  link_item "$pi_settings_source" "$HOME/.pi/agent/settings.json"
+fi
+
 if [[ -d "$pi_extensions_source" ]]; then
   link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
 fi

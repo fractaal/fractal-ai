@@ -1,0 +1,13 @@
+{
+  "lastChangelogVersion": "0.75.1",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "high",
+  "steeringMode": "all",
+  "followUpMode": "all",
+  "transport": "auto",
+  "hideThinkingBlock": false,
+  "packages": [
+    "npm:@ryan_nookpi/pi-extension-claude-mcp-bridge@1.1.2"
+  ]
+}

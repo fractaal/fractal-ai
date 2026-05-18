@@ -87,6 +87,7 @@ $claudeHooksSource = Join-Path $FractalAiHome 'claude/hooks'
 $claudeStatuslineSource = Join-Path $FractalAiHome 'claude/statusline-command.sh'
 
 # Pi-specific sources
+$piSettingsSource = Join-Path $FractalAiHome 'pi/settings.json'
 $piExtensionsSource = Join-Path $FractalAiHome 'pi/extensions'
 
 # Shared: deploy DEPLOYED-INSTRUCTIONS.md as AGENTS.md / CLAUDE.md
@@ -94,6 +95,7 @@ if (Test-Path -Path $deployedInstructionsSource -PathType Leaf) {
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.codex') 'AGENTS.md')
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'AGENTS.md')
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.claude') 'CLAUDE.md')
+    Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'AGENTS.md')
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'AGENTS.md')
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'CLAUDE.md')
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.augment') 'AGENTS.md')
@@ -104,6 +106,7 @@ if (Test-Path -Path $skillsSource -PathType Container) {
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.codex') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.claude') 'skills')
+    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.augment') 'skills')
 }
@@ -121,7 +124,11 @@ if (Test-Path -Path $claudeStatuslineSource -PathType Leaf) {
     Link-FractalItem -Source $claudeStatuslineSource -Target (Join-Path (Join-Path $HOME '.claude') 'statusline-command.sh')
 }
 
-# Pi-only: extensions
+# Pi-only: settings.json, extensions
+if (Test-Path -Path $piSettingsSource -PathType Leaf) {
+    Link-FractalItem -Source $piSettingsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'settings.json')
+}
+
 if (Test-Path -Path $piExtensionsSource -PathType Container) {
     Link-FractalItem -Source $piExtensionsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'extensions')
 }

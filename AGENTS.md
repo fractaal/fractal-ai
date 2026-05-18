@@ -8,8 +8,8 @@ collapsed into both meanings and there was nowhere to put repo-specific guidance
 
 ## What this repo is
 
-Personal AI agent configuration shared across Claude Code, Codex, OpenCode, Gemini, and
-Augment. A single source of truth, deployed via symlinks by `deploy/install.sh`.
+Personal AI agent configuration shared across Claude Code, Codex, OpenCode, Gemini,
+Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/install.sh`.
 
 ## Layout
 
@@ -18,6 +18,8 @@ Augment. A single source of truth, deployed via symlinks by `deploy/install.sh`.
 - `skills/` — tool-agnostic skills. Distributed to every supported tool's `skills/`.
 - `claude/` — Claude Code-only artifacts (`settings.json`, `hooks/`, `statusline-command.sh`,
   `sync-agents.sh`). Distributed only into `~/.claude/`.
+- `pi/` — Pi-only artifacts (`settings.json`, `extensions/`, Pi-specific notes). Distributed
+  only into `~/.pi/agent/`.
 - `deploy/` — install scripts (POSIX + PowerShell).
 
 When adding new content, decide first whether it's tool-agnostic (lives at root or under
@@ -39,3 +41,7 @@ When adding new content, decide first whether it's tool-agnostic (lives at root 
   loads for sessions whose cwd is under `$HOME`. Do not put portable hooks or statusLine
   there; they will silently fail for sessions started outside `$HOME` (e.g. `/opt/...`).
   Reserve it for genuinely machine-local permission allowlists and similar.
+- Pi has no built-in MCP support in 0.75.1. This repo bridges normal MCP config files
+  into Pi through the pinned `@ryan_nookpi/pi-extension-claude-mcp-bridge` package, which
+  registers direct tools named `mcp__<server>__<tool>`. Do not assume Claude.ai
+  account-level connectors are available unless they exist as normal MCP server config.
