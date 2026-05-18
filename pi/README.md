@@ -20,9 +20,10 @@ Deployed by `deploy/install.sh` / `install.ps1`:
 
 - Sets the terminal title to `π <session-name-or-cwd>` on session start.
 - Auto-generates a 3-7 word session name after the first agent turn when the session is still unnamed/ID-like.
+- Generates names from an ephemeral fork of the active branch context: Pi replays the full active branch message context, appends a hidden "name this branch" request, reads the title, and discards that alternate timeline.
 - Reconsiders the name after 50 more user turns by default (`PI_AUTO_RENAME_MIN_TURNS` overrides).
 - Provides `/rename <name>` for explicit renames.
-- Provides `/rename` with no args to generate an intelligent name on demand.
+- Provides `/rename` with no args to generate an intelligent name on demand using the same ephemeral-fork path.
 
 ## MCP status
 

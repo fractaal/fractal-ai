@@ -1,15 +1,15 @@
 import path from "node:path";
-import { complete, type Message } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { completeSimple, type Message } from "@earendil-works/pi-ai";
+import { buildSessionContext, convertToLlm, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const CUSTOM_ENTRY_TYPE = "pi-auto-rename";
 const DEFAULT_MIN_USER_TURNS_BETWEEN_RENAMES = 50;
 const MAX_TITLE_LENGTH = 100;
-const MAX_CONTEXT_CHARS = 12000;
 
-const RENAME_SYSTEM_PROMPT = `You name coding-agent sessions for Ben.
+const RENAME_REQUEST = `You are on an ephemeral fork whose only job is naming the current Pi conversation branch.
 
 Return exactly one title and nothing else.
+Do not call tools.
 
 Rules:
 - 3-7 words when possible.
@@ -96,62 +96,36 @@ function messageText(message: any): string {
 		.join("\n");
 }
 
-function summarizeEntry(entry: SessionEntry): string | undefined {
-	if (entry.type === "compaction") {
-		return `compaction: ${entry.summary}`;
+function buildEphemeralRenameMessages(ctx: ExtensionContext): Message[] {
+	const sessionContext = buildSessionContext(ctx.sessionManager.getBranch());
+	const llmMessages = convertToLlm(sessionContext.messages);
+	if (llmMessages.length === 0) {
+		throw new Error("No conversation yet");
 	}
-	if (entry.type !== "message") return undefined;
 
-	const role = entry.message.role;
-	if (role !== "user" && role !== "assistant" && role !== "compactionSummary") return undefined;
-	const text = role === "compactionSummary" ? (entry.message as any).summary : messageText(entry.message);
-	if (!text.trim()) return undefined;
-	return `${role}: ${text.replace(/\s+/g, " ").trim().slice(0, 1200)}`;
+	return [
+		...llmMessages,
+		{
+			role: "user",
+			content: [{ type: "text", text: `${RENAME_REQUEST}\n\nCurrent cwd: ${ctx.cwd}` }],
+			timestamp: Date.now(),
+		},
+	];
 }
 
-function buildRenameContext(ctx: ExtensionContext): string | undefined {
-	const branch = ctx.sessionManager.getBranch();
-	const summaries = branch.map(summarizeEntry).filter((entry) => entry !== undefined);
-	if (summaries.length === 0) return undefined;
-
-	const firstUser = summaries.find((line) => line.startsWith("user:"));
-	const recent = summaries.slice(-18);
-	const lines = [
-		`cwd: ${ctx.cwd}`,
-		firstUser ? `first user message: ${firstUser.slice("user:".length).trim()}` : undefined,
-		"recent conversation:",
-		...recent,
-	].filter((line) => line !== undefined);
-
-	let text = lines.join("\n");
-	if (text.length > MAX_CONTEXT_CHARS) {
-		text = text.slice(text.length - MAX_CONTEXT_CHARS);
-	}
-	return text;
-}
-
-async function generateTitle(ctx: ExtensionContext): Promise<string> {
+async function generateTitle(pi: ExtensionAPI, ctx: ExtensionContext): Promise<string> {
 	if (!ctx.model) {
 		throw new Error("No model selected");
 	}
 
-	const context = buildRenameContext(ctx);
-	if (!context) {
-		throw new Error("No conversation yet");
-	}
-
+	const messages = buildEphemeralRenameMessages(ctx);
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
 	if (!auth.ok) throw new Error(auth.error);
+	const thinkingLevel = pi.getThinkingLevel();
 
-	const userMessage: Message = {
-		role: "user",
-		content: [{ type: "text", text: context }],
-		timestamp: Date.now(),
-	};
-
-	const response = await complete(
+	const response = await completeSimple(
 		ctx.model,
-		{ systemPrompt: RENAME_SYSTEM_PROMPT, messages: [userMessage] },
+		{ systemPrompt: ctx.getSystemPrompt(), messages },
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
@@ -159,6 +133,10 @@ async function generateTitle(ctx: ExtensionContext): Promise<string> {
 			maxTokens: 64,
 			timeoutMs: 30_000,
 			maxRetries: 1,
+			reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
+			// The fork is local-only: nothing is appended to the Pi session. Reuse the
+			// live session ID intentionally so provider-side cache/transport affinity stays warm.
+			sessionId: ctx.sessionManager.getSessionId(),
 		},
 	);
 
@@ -236,7 +214,7 @@ export default function autoRenameExtension(pi: ExtensionAPI) {
 
 	async function renameIntelligently(ctx: ExtensionContext, source: "auto" | "generated"): Promise<string> {
 		try {
-			const generated = await generateTitle(ctx);
+			const generated = await generateTitle(pi, ctx);
 			applySessionName(pi, ctx, generated, source);
 			return generated;
 		} catch (error) {
