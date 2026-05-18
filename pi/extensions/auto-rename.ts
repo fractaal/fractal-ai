@@ -1,15 +1,18 @@
 import path from "node:path";
-import { completeSimple, type Message } from "@earendil-works/pi-ai";
+import { completeSimple, type Message, type Tool } from "@earendil-works/pi-ai";
 import { buildSessionContext, convertToLlm, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const CUSTOM_ENTRY_TYPE = "pi-auto-rename";
 const DEFAULT_MIN_USER_TURNS_BETWEEN_RENAMES = 50;
 const MAX_TITLE_LENGTH = 100;
 
-const RENAME_REQUEST = `You are on an ephemeral fork whose only job is naming the current Pi conversation branch.
-
-Return exactly one title and nothing else.
-Do not call tools.
+const RENAME_REQUEST = `<CRITICAL>
+You are on an ephemeral fork whose only job is naming the current Pi conversation branch.
+Do not continue the user's task.
+Do not call tools, even though they are available.
+Do not explain, analyze, summarize, or produce markdown.
+Return exactly one session title and nothing else.
+</CRITICAL>
 
 Rules:
 - 3-7 words when possible.
@@ -96,6 +99,16 @@ function messageText(message: any): string {
 		.join("\n");
 }
 
+function activeTools(pi: ExtensionAPI): Tool[] | undefined {
+	const toolsByName = new Map(pi.getAllTools().map((tool) => [tool.name, tool]));
+	const tools = pi
+		.getActiveTools()
+		.map((name) => toolsByName.get(name))
+		.filter((tool) => tool !== undefined)
+		.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+	return tools.length > 0 ? tools : undefined;
+}
+
 function buildEphemeralRenameMessages(ctx: ExtensionContext): Message[] {
 	const sessionContext = buildSessionContext(ctx.sessionManager.getBranch());
 	const llmMessages = convertToLlm(sessionContext.messages);
@@ -125,7 +138,7 @@ async function generateTitle(pi: ExtensionAPI, ctx: ExtensionContext): Promise<s
 
 	const response = await completeSimple(
 		ctx.model,
-		{ systemPrompt: ctx.getSystemPrompt(), messages },
+		{ systemPrompt: ctx.getSystemPrompt(), messages, tools: activeTools(pi) },
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
@@ -142,6 +155,9 @@ async function generateTitle(pi: ExtensionAPI, ctx: ExtensionContext): Promise<s
 
 	if (response.stopReason === "aborted") {
 		throw new Error("Rename generation aborted");
+	}
+	if (response.stopReason === "toolUse") {
+		throw new Error("Rename generation attempted to use a tool");
 	}
 
 	const raw = response.content
