@@ -14,6 +14,16 @@ Deployed by `deploy/install.sh` / `install.ps1`:
 `auth.json`, sessions, npm/git package caches, and other mutable runtime state stay under
 `~/.pi/agent/` and are not tracked here.
 
+## Auto rename
+
+`pi/extensions/auto-rename.ts` keeps Pi sessions and terminal/window titles named:
+
+- Sets the terminal title to `π <session-name-or-cwd>` on session start.
+- Auto-generates a 3-7 word session name after the first agent turn when the session is still unnamed/ID-like.
+- Reconsiders the name after 50 more user turns by default (`PI_AUTO_RENAME_MIN_TURNS` overrides).
+- Provides `/rename <name>` for explicit renames.
+- Provides `/rename` with no args to generate an intelligent name on demand.
+
 ## MCP status
 
 Pi 0.75.1 does not include built-in MCP support, so MCP is provided by the
