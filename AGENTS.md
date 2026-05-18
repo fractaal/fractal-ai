@@ -42,6 +42,6 @@ When adding new content, decide first whether it's tool-agnostic (lives at root 
   there; they will silently fail for sessions started outside `$HOME` (e.g. `/opt/...`).
   Reserve it for genuinely machine-local permission allowlists and similar.
 - Pi has no built-in MCP support in 0.75.1. This repo bridges normal MCP config files
-  into Pi through Ben's `fractaal/pi-extension@async-mcp-startup` fork, which registers
+  into Pi through Ben's pinned `fractaal/pi-extension` fork, which registers
   direct tools named `mcp__<server>__<tool>` without blocking Pi startup. Do not assume Claude.ai
   account-level connectors are available unless they exist as normal MCP server config.
