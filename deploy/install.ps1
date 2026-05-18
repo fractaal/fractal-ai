@@ -80,11 +80,27 @@ function Warn-StaleSettingsLocal {
 
 function Ensure-PiMcpBridgeCache {
     $cache = Join-Path (Join-Path (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'git') 'github.com') (Join-Path 'fractaal' 'pi-extension')
-    if (-not (Test-Path -Path (Join-Path $cache '.git') -PathType Container)) { return }
 
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Warning 'git not found; cannot verify cached Pi MCP bridge package'
+        Write-Warning 'git not found; cannot install or verify cached Pi MCP bridge package'
         return
+    }
+
+    if (-not (Test-Path -Path (Join-Path $cache '.git') -PathType Container)) {
+        if (Test-Path -Path $cache -PathType Any) {
+            Write-Warning "$cache exists but is not a git checkout; cannot install Pi MCP bridge package cache"
+            return
+        }
+        Write-Warning "Installing cached Pi MCP bridge package at $cache"
+        $parent = Split-Path -Path $cache -Parent
+        if (-not (Test-Path -Path $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        & git clone https://github.com/fractaal/pi-extension.git $cache
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'failed to clone Pi MCP bridge package; Pi may install it on first startup'
+            return
+        }
     }
 
     $rawCurrent = & git -C $cache rev-parse HEAD 2>$null

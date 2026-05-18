@@ -65,11 +65,23 @@ warn_stale_settings_local() {
 
 ensure_pi_mcp_bridge_cache() {
   local cache="$HOME/.pi/agent/git/github.com/fractaal/pi-extension"
-  [[ -d "$cache/.git" ]] || return 0
 
   if ! command -v git >/dev/null 2>&1; then
-    echo "  WARN: git not found; cannot verify cached Pi MCP bridge package" >&2
+    echo "  WARN: git not found; cannot install or verify cached Pi MCP bridge package" >&2
     return 0
+  fi
+
+  if [[ ! -d "$cache/.git" ]]; then
+    if [[ -e "$cache" ]]; then
+      echo "  WARN: $cache exists but is not a git checkout; cannot install Pi MCP bridge package cache" >&2
+      return 0
+    fi
+    echo "  Installing cached Pi MCP bridge package at $cache" >&2
+    mkdir -p "$(dirname "$cache")"
+    if ! git clone https://github.com/fractaal/pi-extension.git "$cache"; then
+      echo "  WARN: failed to clone Pi MCP bridge package; Pi may install it on first startup" >&2
+      return 0
+    fi
   fi
 
   local current
