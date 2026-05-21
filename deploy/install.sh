@@ -39,6 +39,8 @@ link_item() {
 # duplication (Claude Code merges arrays across precedence scopes; the
 # string-difference between `~/...` and `$HOME-substituted/...` defeats
 # dedup), so leaving them risks every Stop/Edit firing the gates twice.
+PI_MCP_BRIDGE_COMMIT="879cf3d9dd51f5315e98958a7d0ea55e1314da4a"
+
 warn_stale_settings_local() {
   local target="$HOME/.claude/settings.local.json"
   [[ -f "$target" ]] || return 0
@@ -58,6 +60,52 @@ warn_stale_settings_local() {
     echo "          tmp=\$(mktemp) && jq 'del(.hooks, .statusLine)' \"$target\" > \"\$tmp\" && mv \"\$tmp\" \"$target\"" >&2
     echo "  ────────────────────────────────────────────────────────────" >&2
     echo "" >&2
+  fi
+}
+
+ensure_pi_mcp_bridge_cache() {
+  local cache="$HOME/.pi/agent/git/github.com/fractaal/pi-extension"
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "  WARN: git not found; cannot install or verify cached Pi MCP bridge package" >&2
+    return 0
+  fi
+
+  if [[ ! -d "$cache/.git" ]]; then
+    if [[ -e "$cache" ]]; then
+      echo "  WARN: $cache exists but is not a git checkout; cannot install Pi MCP bridge package cache" >&2
+      return 0
+    fi
+    echo "  Installing cached Pi MCP bridge package at $cache" >&2
+    mkdir -p "$(dirname "$cache")"
+    if ! git clone https://github.com/fractaal/pi-extension.git "$cache"; then
+      echo "  WARN: failed to clone Pi MCP bridge package; Pi may install it on first startup" >&2
+      return 0
+    fi
+  fi
+
+  local current
+  current=$(git -C "$cache" rev-parse HEAD 2>/dev/null || true)
+  [[ "$current" == "$PI_MCP_BRIDGE_COMMIT" ]] && return 0
+
+  echo "  Updating cached Pi MCP bridge package to $PI_MCP_BRIDGE_COMMIT" >&2
+  if ! git -C "$cache" fetch origin async-mcp-startup; then
+    echo "  WARN: failed to fetch Pi MCP bridge package; Pi may keep using cached commit $current" >&2
+    return 0
+  fi
+  if ! git -C "$cache" checkout --detach "$PI_MCP_BRIDGE_COMMIT"; then
+    echo "  WARN: failed to checkout Pi MCP bridge package commit $PI_MCP_BRIDGE_COMMIT" >&2
+    return 0
+  fi
+
+  if [[ -f "$cache/package.json" ]]; then
+    if command -v npm >/dev/null 2>&1; then
+      if ! (cd "$cache" && npm install --omit=dev); then
+        echo "  WARN: failed to install Pi MCP bridge package dependencies" >&2
+      fi
+    else
+      echo "  WARN: npm not found; Pi MCP bridge package dependencies may install on first Pi startup" >&2
+    fi
   fi
 }
 
@@ -111,6 +159,7 @@ fi
 # ── Pi-only: settings.json, extensions ────────────────────────────────
 if [[ -f "$pi_settings_source" ]]; then
   link_item "$pi_settings_source" "$HOME/.pi/agent/settings.json"
+  ensure_pi_mcp_bridge_cache
 fi
 
 if [[ -d "$pi_extensions_source" ]]; then

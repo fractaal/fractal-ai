@@ -75,7 +75,7 @@ The install scripts symlink into the following locations, backing up any existin
 
 `claude/settings.json` is the single source of truth for portable Claude Code config — env vars, permissions, plugins, preferences, **and** the hooks + statusLine. Command strings use `~/...` paths so the same file works on any machine without a render step (Claude Code spawns hooks with `shell:true`, and `/bin/sh` tilde-expands the leading `~` at runtime).
 
-`pi/settings.json` is the single source of truth for portable Pi user settings, including pinned Pi packages. Pi runtime state (`auth.json`, sessions, npm/git package caches) stays under `~/.pi/agent/` and is not tracked here. Pi 0.75.1 intentionally has no built-in MCP support, so this repo installs `@ryan_nookpi/pi-extension-claude-mcp-bridge` to bridge normal MCP config files into direct Pi tools.
+`pi/settings.json` is the single source of truth for portable Pi user settings, including pinned Pi packages. Pi runtime state (`auth.json`, sessions, npm/git package caches) stays under `~/.pi/agent/` and is not tracked here. Pi 0.75.1 intentionally has no built-in MCP support, so this repo installs Ben's pinned `fractaal/pi-extension` fork to bridge normal MCP config files into direct Pi tools without blocking Pi startup.
 
 `~/.claude/settings.local.json` is **not** part of this repo. It's a per-machine, user-managed override that Claude Code scopes by cwd ancestry — only sessions whose cwd is under `$HOME` see it. Reserve it for genuinely machine-local entries (e.g. distro-specific permission allowlists). Do **not** put hooks or statusLine there; sessions started outside `$HOME` (e.g. `/opt/...`) won't load them.
 

@@ -3,3 +3,6 @@
 *.disabled-*
 __pycache__/
 .worktrees/
+
+# Codex-managed system skills — regenerated on sync, not hand-curated.
+skills/.system/

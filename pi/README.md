@@ -27,11 +27,11 @@ Deployed by `deploy/install.sh` / `install.ps1`:
 
 ## MCP status
 
-Pi 0.75.1 does not include built-in MCP support, so MCP is provided by the
-pinned Pi package in `pi/settings.json`:
+Pi 0.75.1 does not include built-in MCP support, so MCP is provided by Ben's
+forked Pi package in `pi/settings.json`:
 
 ```json
-"packages": ["npm:@ryan_nookpi/pi-extension-claude-mcp-bridge@1.1.2"]
+"packages": ["git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a"]
 ```
 
 This bridge scans project/global MCP config files and registers MCP tools directly as Pi

@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 
 $FractalAiHome = if ($env:FRACTAL_AI_HOME) { $env:FRACTAL_AI_HOME } else { Join-Path $HOME '.fractal-ai' }
+$PiMcpBridgeCommit = '879cf3d9dd51f5315e98958a7d0ea55e1314da4a'
 
 function Link-FractalItem {
     param(
@@ -77,6 +78,66 @@ function Warn-StaleSettingsLocal {
     }
 }
 
+function Ensure-PiMcpBridgeCache {
+    $cache = Join-Path (Join-Path (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'git') 'github.com') (Join-Path 'fractaal' 'pi-extension')
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Warning 'git not found; cannot install or verify cached Pi MCP bridge package'
+        return
+    }
+
+    if (-not (Test-Path -Path (Join-Path $cache '.git') -PathType Container)) {
+        if (Test-Path -Path $cache -PathType Any) {
+            Write-Warning "$cache exists but is not a git checkout; cannot install Pi MCP bridge package cache"
+            return
+        }
+        Write-Warning "Installing cached Pi MCP bridge package at $cache"
+        $parent = Split-Path -Path $cache -Parent
+        if (-not (Test-Path -Path $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        & git clone https://github.com/fractaal/pi-extension.git $cache
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'failed to clone Pi MCP bridge package; Pi may install it on first startup'
+            return
+        }
+    }
+
+    $rawCurrent = & git -C $cache rev-parse HEAD 2>$null
+    $current = if ($LASTEXITCODE -eq 0 -and $null -ne $rawCurrent) { ($rawCurrent -join "`n").Trim() } else { '' }
+    if ($current -eq $PiMcpBridgeCommit) { return }
+
+    Write-Warning "Updating cached Pi MCP bridge package to $PiMcpBridgeCommit"
+    & git -C $cache fetch origin async-mcp-startup
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "failed to fetch Pi MCP bridge package; Pi may keep using cached commit $current"
+        return
+    }
+
+    & git -C $cache checkout --detach $PiMcpBridgeCommit
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "failed to checkout Pi MCP bridge package commit $PiMcpBridgeCommit"
+        return
+    }
+
+    if (Test-Path -Path (Join-Path $cache 'package.json') -PathType Leaf) {
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            Push-Location $cache
+            try {
+                & npm install --omit=dev
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning 'failed to install Pi MCP bridge package dependencies'
+                }
+            }
+            finally {
+                Pop-Location
+            }
+        } else {
+            Write-Warning 'npm not found; Pi MCP bridge package dependencies may install on first Pi startup'
+        }
+    }
+}
+
 # Shared sources (portable across all AI tools)
 $deployedInstructionsSource = Join-Path $FractalAiHome 'DEPLOYED-INSTRUCTIONS.md'
 $skillsSource = Join-Path $FractalAiHome 'skills'
@@ -127,6 +188,7 @@ if (Test-Path -Path $claudeStatuslineSource -PathType Leaf) {
 # Pi-only: settings.json, extensions
 if (Test-Path -Path $piSettingsSource -PathType Leaf) {
     Link-FractalItem -Source $piSettingsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'settings.json')
+    Ensure-PiMcpBridgeCache
 }
 
 if (Test-Path -Path $piExtensionsSource -PathType Container) {
