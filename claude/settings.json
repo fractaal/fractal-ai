@@ -12,7 +12,7 @@
       "Bash(python3:*)",
       "Bash(bash ~/.claude/hooks/scripts/apply-session-rename.sh:*)"
     ],
-    "defaultMode": "plan"
+    "defaultMode": "bypassPermissions"
   },
   "hooks": {
     "PreToolUse": [
@@ -23,6 +23,16 @@
             "type": "command",
             "command": "python3 ~/.claude/hooks/pre_impl_gate.py",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion|EnterPlanMode|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked by user config. AskUserQuestion and the plan-mode tools (EnterPlanMode/ExitPlanMode) interrupt the session silently, and Ben cannot tell what happened when many agents run in parallel. Do NOT retry this tool. To get his attention or a decision, invoke the /notify skill with a clear, specific message, then continue with a best-judgment default or stop. Keep making forward progress where possible.\"}}'",
+            "timeout": 5
           }
         ]
       }
