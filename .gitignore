@@ -2,3 +2,6 @@
 *.bak-*
 *.disabled-*
 __pycache__/
+
+# Codex-managed system skills — regenerated on sync, not hand-curated.
+skills/.system/
