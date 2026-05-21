@@ -18,6 +18,7 @@ You are already running inside a tmux pane. The tmux server socket is live and y
 1. **Shell workers** — run commands in isolated panes, tail their output, and clean up.
 2. **Subagent workers** — spawn a `claude` CLI subagent in a pane, feed it a prompt, poll until done, and read the result back.
 3. **Parallel fan-out** — spin up N workers at once, await all, collect results.
+4. **Persistent peer agent** — run a peer agent (e.g. Codex) as a long-lived interactive REPL in a pane that both you *and the user* can drive. **Preferred for sustained peer-agent collaboration** — see Pattern 6.
 
 ## Prerequisites
 
@@ -263,13 +264,104 @@ are resumable. You don't need to have run them interactively first.
 
 ---
 
+## Pattern 6 — Persistent Interactive Peer Agent ★ preferred for sustained collaboration
+
+Patterns 2 / 4 / 5 spawn a *headless* agent (`codex exec`, `claude -p`) for a
+one-shot job. When a peer agent instead **owns a workstream** — many briefs and
+follow-ups across a long session (e.g. Codex implementing a service's backend
+while you build the frontend) — run it as a **persistent interactive REPL in a
+tmux pane** instead. This is the **preferred** shape for sustained collaboration.
+
+**Why preferred:**
+
+- The pane is **inspectable** — the user watches the peer work live.
+- The pane is **interjectable** — the user can *type into the same pane* as a
+  third party, to steer or correct the peer mid-task. A headless `codex exec`
+  is a black box; nobody can see or touch it.
+- The REPL **keeps full context** across every follow-up — no `codex exec
+  resume` / session-ID juggling (Pattern 5). Just send the next task.
+
+(`codex exec` / Patterns 2 & 4 are still right for a genuine *one-shot*
+consultation — a review, a single question. Pattern 6 is for an ongoing peer.)
+
+### Spawn — interactive, NOT `exec`
+
+```bash
+CODEX_PANE=$(tmux split-window -h -d -P -F '#{pane_id}')
+tmux send-keys -t "$CODEX_PANE" \
+  'codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.5 -c model_reasoning_effort=high -C /abs/path/to/repo "Read /tmp/brief.md and begin."' Enter
+```
+
+| Flag | Why |
+|---|---|
+| *(no `exec`)* | Bare `codex` is the interactive TUI — the whole point. `codex exec` is headless. |
+| `--no-alt-screen` | **Mandatory.** Otherwise the TUI uses the alternate screen, where `capture-pane` sees only the current viewport — no scrollback. Inline mode keeps history readable. |
+| `--dangerously-bypass-approvals-and-sandbox` | Peer-engineer model — no per-action approval prompts (the host machine is the sandbox). The user can still interject by typing. |
+| `-C /abs/path` | Roots the agent in the target repo. |
+| `[PROMPT]` positional | A short single-line kickoff. Long briefs go in a file (below). |
+
+First run shows a **"Do you trust the contents of this directory?"** prompt —
+`tmux send-keys -t "$CODEX_PANE" Enter` once to confirm.
+
+### Brief via a file, drive via send-keys
+
+Long multi-line briefs sent through `send-keys` into a TUI are fragile —
+embedded newlines submit the message early. Write the brief to a file (Write
+tool) and `send-keys` a one-liner pointing at it:
+
+```bash
+tmux send-keys -t "$CODEX_PANE" 'Read /tmp/codex-<topic>.md in full and implement it. Commit when done.' Enter
+```
+
+**Submit quirk:** `send-keys … Enter` sometimes leaves the text sitting in the
+`›` input box unsent. Capture the pane; if the message is still in the input,
+send a second bare `Enter`. Follow-up tasks: `send-keys` the next instruction
+into the **same pane** — context persists. Brief at intent level (see the
+`consulting-other-agents` skill) — the peer is a peer, not a typist.
+
+### Blocking on the peer — poll for IDLE
+
+An interactive REPL process **never exits**, so `tail --pid` and
+`poll_pane_done.sh` (which wait for a shell prompt) do **not** work here. Block
+by polling the pane for the peer's idle state.
+
+Codex's TUI shows `• Working (Xs • esc to interrupt)` while processing a turn,
+and `• Waiting for background terminal` while a sub-command runs. **Idle =
+neither marker present.**
+
+Run this with the Bash tool's `run_in_background: true` — it exits when the peer
+goes idle, giving you exactly one completion notification:
+
+```bash
+for i in $(seq 1 240); do
+  cap=$(tmux capture-pane -p -t "$CODEX_PANE" 2>/dev/null) || { echo PANE_GONE; break; }
+  grep -qE 'Working \(|Waiting for' <<<"$cap" || { echo "CODEX_IDLE after ~$((i*10))s"; break; }
+  sleep 10
+done
+echo '=== codex pane ==='
+tmux capture-pane -p -S -120 -t "$CODEX_PANE" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -45
+```
+
+Then read the peer's final report from the pane scrollback, or the committed
+result directly (`git log`). **While blocked, do real parallel work** — the
+non-peer side of the task — rather than emitting "still working" status turns;
+fall back to a pure blocking wait only when no independent work remains.
+
+### Cleanup
+
+A persistent peer pane is *intentionally* long-lived — **do not kill it between
+tasks**; that destroys the context that makes it valuable. Kill it only when the
+whole collaboration is over.
+
+---
+
 ## Rules & Discipline
 
 - **Always clean up panes.** Kill every pane you spawn. Leaked panes accumulate.
 - **Always `tee` to a file.** Never use bare `>` redirect — it hides output from the user. Use `2>&1 | tee /tmp/file.txt` so output streams to both the pane (visible) and the file (readable by you).
 - **Don't ask subagents to write to /tmp files for reviews/verdicts.** The `tee` approach pollutes the output file with terminal artifacts (tool output, shell commands, hex dumps). Instead, let the subagent emit its response naturally to the pane, then use `tmux capture-pane -p -S - -t "$PANE"` and `grep -A` on a known marker (e.g. "## Review", "Verdict", "Findings") to extract the content from scrollback. This is more reliable than fighting file corruption. Reserve `/tmp` write targets for structured data the subagent generates programmatically, not prose.
 - **Don't poll tightly.** Use `sleep 2` between capture-pane checks. CPU waste and noise if you spin hot.
-- **One task per pane.** Don't reuse a pane for multiple sequential tasks. Spawn fresh, kill when done.
+- **One task per pane.** Don't reuse a pane for multiple sequential tasks. Spawn fresh, kill when done. *(Exception: a persistent peer-agent pane — Pattern 6 — is deliberately reused across many tasks and kept alive for the whole collaboration.)*
 - **Keep prompts self-contained.** A subagent in a pane has no shared context with your session. Pass everything it needs in the prompt string.
 - **Timeout everything.** `poll_pane_done.sh` accepts a `--timeout` arg. Always set one. Hung agents must not block forever.
 - **Prefer `tee` over `spawn_agent.sh` when the user is watching.** `spawn_agent.sh` redirects stdout to a file, making the pane appear blank. Only use it for fire-and-forget background work where the user doesn't need to see progress.
