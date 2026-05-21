@@ -2,13 +2,15 @@
 name: consulting-other-agents
 description: >-
   INVOKE/LOAD BEFORE asking another AI agent for an opinion, second pass, or
-  cross-check — Codex CLI, a peer Claude via tmux, Gemini, sgpt, etc. Three
+  cross-check — Codex CLI, a peer Claude via tmux, Gemini, sgpt, etc. Four
   failure modes this skill exists to prevent: (1) piping the agent's stdout
   through `tail`/`head` so the response never appears because buffering,
   (2) framing the query in a way that confirms your premise instead of
-  inviting disagreement, and (3) briefing the peer at the diff/line level so
+  inviting disagreement, (3) briefing the peer at the diff/line level so
   it just executes your pre-decided solution instead of applying its own
-  judgment. Each one wastes the consultation.
+  judgment, and (4) — as the agent being briefed — taking the briefer's
+  claims about the codebase as fact instead of verifying them. Each one
+  wastes the consultation.
   Keyword triggers: "ask codex", "consult codex", "second opinion", "cross-check
   with codex", "spawn a peer agent", "have gemini check", "what does codex
   think", "bring up codex", "invoke another agent".
@@ -267,6 +269,56 @@ A leading question (Failure 2) forecloses the peer's *answer*; a muzzling
 brief forecloses the peer's *work*. Same skill, same waste — the
 consultation thrown away before it can fire.
 
+### Failure 4 — inheriting the briefer's unverified claims
+
+The first three failures are about the agent *doing* the consulting. This
+one is about the agent *being* consulted — and the claims a brief smuggles
+in.
+
+A brief is never just a task. It carries the briefer's **beliefs about the
+codebase**: "the ingress is the web adapter," "X is handled in `foo.ts`,"
+"the only caller is `Y`," "that type already has the field." Those beliefs
+are not facts. The briefer is a peer who can be wrong — that is the entire
+reason you were consulted.
+
+You think a brief like this hands you solid ground to build on:
+
+> "aria-chat's web messages come in through the gateway's `/v1/chat`
+> adapter — add the `//` handling there."
+
+It does not. That sentence is a *hypothesis*. If it is wrong — if aria-chat
+actually writes the database directly and never touches that adapter — then
+every line you write on top of it is wrong, and **you will not find out**,
+because the brief told you where to look and you looked only there.
+
+Real cost paid in this codebase: a brief asserted aria-chat's message
+ingress flowed through the gateway. It did not — aria-chat's server wrote
+Firestore directly, bypassing the gateway entirely. The consulted agent
+took the claim on faith, scoped its work to the gateway paths, and the
+direct-write path was never examined. A feature shipped with a hole in it;
+the bug then cost a second round of investigation and a second agent to
+fix. One unverified sentence, inherited whole.
+
+**Treat every codebase claim in a brief as a lead, not a fact.** Before you
+build on "X is in `Y`" / "the flow goes through `Z`" / "the only caller is
+`W`":
+
+- **Verify the load-bearing ones yourself** — `grep`, read the file,
+  confirm. The claims your work *depends on* get checked; incidental ones
+  can slide.
+- **"It's in this file, trust me" earns *more* scrutiny, not less.** A
+  confident pointer is still a peer who might be wrong; confidence is not
+  evidence. The more a claim would cost if wrong, the harder you check it.
+- **If the code contradicts the brief, the code wins.** Say so plainly,
+  back to the briefer. Catching exactly this is why you were consulted —
+  inheriting their map defeats the point.
+
+And the symmetric duty when **you write the brief**: mark codebase claims
+as beliefs, not facts. "I *think* the ingress is the web adapter — verify"
+tells the recipient what to check. "The ingress is the web adapter"
+launders an assumption into a fact and propagates your blind spot straight
+into their work.
+
 ## When to consult other agents at all
 
 Cross-agent consultation has a real cost (tokens, latency, your attention).
@@ -344,5 +396,9 @@ Before you hit Enter on a `codex exec` (or equivalent), confirm:
 - [ ] **You can act on either answer.** If the consultation comes back
       "you're wrong about X," do you have the time/context to redirect?
       If not, you're not really consulting — you're confirming.
+- [ ] **Codebase claims are marked as beliefs, not facts.** Any "X is in
+      `Y`" / "the flow goes through `Z`" / "the only caller is `W`" in the
+      brief is flagged as *to be verified*, so the peer knows to check it
+      rather than inherit it. (See Failure 4.)
 
 If any checkbox is unchecked, fix the call before sending.
