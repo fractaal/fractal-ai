@@ -7,8 +7,8 @@ description: >-
   the decision on...", "find my notes about...", "what happened with...", or
   any variation of recalling/searching past engineering context. Uses qmd
   (local search engine) over Obsidian scratchpads via Bash CLI. Default is a
-  lean-model semantic query wrapped in ./search.sh; BM25 and direct file
-  retrieval remain available for exact-string and known-filename lookups.
+  lean-model semantic query wrapped in ./search.sh; the official Obsidian CLI
+  remains available for exact-string and known-filename lookups.
   This is the READ half — for writing new logs, use write-engineering-logs.
   KEYWORDS: "remember", "recall", "find notes", "prior context", "pick up where
   we left off", "what did we decide", "past logs", "search scratchpads".
@@ -20,7 +20,7 @@ description: >-
 
 Search and retrieve context from past Obsidian scratchpad entries using `qmd`. **Default to the wrapper script `~/.claude/skills/read-engineering-logs/search.sh "<query>"`** — it preloads a lean-model preset (0.6B Qwen3 expansion instead of qmd's 1.7B default), runs `qmd update` + `qmd embed` for freshness, and invokes `qmd query --no-rerank` for semantic retrieval. This gives high-quality semantic results without pinning the M1 Pro. This skill is read-only — it searches and synthesizes past entries but does not write new ones. For writing, see `write-engineering-logs`.
 
-All commands run via Bash CLI, making this skill portable across any AI agent (Claude Code, Codex, OpenCode).
+All commands run via Bash CLI, making this skill portable across any AI agent (Claude Code, Codex, OpenCode). Use the official `obsidian` CLI for known-file reads and exact text search; do not use the Obsidian MCP tools.
 
 ## Bootstrap (First Run)
 
@@ -57,17 +57,17 @@ After bootstrap, the collection persists across sessions. On subsequent runs, ch
 
 ## Search Strategy
 
-### Tier 1: Direct File Retrieval
+### Tier 1: Direct File Retrieval via Obsidian CLI
 
 Use when the user references a specific date, project name, or topic that maps directly to a filename.
 
 ```bash
-qmd get "Scratchpads/2026-02-23-fluid-jitter-fix.md"
-qmd multi-get "Scratchpads/2026-02-*-fluid*.md" --max-bytes 20480
-qmd ls scratchpads
+obsidian read path="Scratchpads/2026-02-23-fluid-jitter-fix.md"
+obsidian files folder="Scratchpads" ext=md
+obsidian search:context query="fluid jitter" path="Scratchpads" limit=10
 ```
 
-**When to use**: User says "pull up last Friday's notes", or references a known filename/date/topic.
+**When to use**: User says "pull up last Friday's notes", references a known filename/date/topic, or asks for a literal phrase that should appear verbatim. Use `obsidian read` for exact files and `obsidian search:context` for exact text with surrounding line context.
 
 ### Tier 2: Lean LLM Semantic Search — **DEFAULT**
 
@@ -88,13 +88,13 @@ Invoke the wrapper with the query as the first argument. It handles env vars, fr
 
 CPU stays low (~15–20%) the whole time. If you see the machine grinding, that's a different problem — report it.
 
-### Tier 3: BM25 Keyword Search — fast exact-match escape hatch
+### Tier 3: Exact Obsidian CLI Search — fast literal escape hatch
 
 For mechanical lookups where semantic matching adds nothing — specific function names, exact error text, file paths, literal identifiers. Zero model loading, sub-second.
 
 ```bash
-qmd search "SphFluidSolver pressure normalization" --md -n 10 -c scratchpads
-qmd search "TypeError: cannot read property" --md -n 10 -c scratchpads
+obsidian search:context query="SphFluidSolver pressure normalization" path="Scratchpads" limit=10
+obsidian search:context query="TypeError: cannot read property" path="Scratchpads" limit=10 format=json
 ```
 
 **When to use**: The query is a literal string you expect to appear verbatim in a scratchpad. Otherwise prefer Tier 2 — it handles exact strings too via BM25 fusion, just with more overhead.
@@ -102,7 +102,7 @@ qmd search "TypeError: cannot read property" --md -n 10 -c scratchpads
 ### Combining Tiers
 
 For thorough recontextualization (picking up a multi-session project), combine:
-1. Tier 1 to pull all scratchpads for the topic by filename pattern.
+1. Tier 1 to pull known scratchpads or exact Obsidian search hits for the topic.
 2. Tier 2 with the project name or a conceptual query to surface entries that use different naming.
 
 ## Invocation Modes
@@ -145,12 +145,13 @@ When self-invoking to recontextualize at the start of a session or mid-conversat
 
 ## Rules
 
-- **NEVER run multiple `qmd` / `search.sh` commands in parallel.** Always run them sequentially (one at a time, waiting for each to finish). Parallel invocations multiply model loads and will freeze the machine. This applies across tiers too — Tier 1 + Tier 2 go sequentially, never concurrently.
-- Never fabricate or hallucinate scratchpad content. Only surface what `qmd` actually returns.
+- **NEVER run multiple `qmd` / `search.sh` commands in parallel.** Always run them sequentially (one at a time, waiting for each to finish). Parallel invocations multiply model loads and will freeze the machine. Obsidian CLI exact searches are cheap, but when combining them with qmd, keep the qmd invocation sequential and isolated.
+- Never fabricate or hallucinate scratchpad content. Only surface what `qmd` or `obsidian` actually returns.
 - Always attribute excerpts to their source file and date.
 - When multiple scratchpads cover the same topic across dates, present them chronologically to show how the work evolved.
 - If `qmd` returns low-relevance results (scores below 0.3), note the uncertainty rather than presenting weak matches as authoritative.
 - `search.sh` already sets `--md` and `-c scratchpads`; don't duplicate them.
+- If `obsidian` is not on PATH, say the Obsidian CLI is unavailable/needs registration instead of falling back to the Obsidian MCP tools.
 - If the user asks for something with no scratchpad trail, say so clearly and suggest starting a new log via `write-engineering-logs`.
 
 ## Advanced: Overriding the Preset

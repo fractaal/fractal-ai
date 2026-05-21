@@ -6,7 +6,8 @@ description: >-
   context, decisions, and implementation details across sessions and tools. This
   is the WRITE half — use for logging during planning, code review, debugging,
   feature work, and bugfixes. Default to the daily scratchpad
-  Scratchpads/YYYY-MM-DD-topic-name.md (create if missing) via Obsidian tools.
+  Scratchpads/YYYY-MM-DD-topic-name.md (create if missing) via the official
+  Obsidian CLI.
   For READING/SEARCHING past logs, use the companion skill read-engineering-logs.
   KEYWORDS: "engineering logs", "scratchpads", "logs", "dailies", "write notes",
   "doctor's notes".
@@ -31,13 +32,34 @@ Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the 
 
 - Default path: `Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md` using the current local date.
 - If the date is unclear, run `date +%F` to determine it.
-- Create the file if missing by using `obsidian_append_content` (append creates the note).
+- Create the file if missing with `obsidian create path="Scratchpads/...md" content=""` before appending.
 - If the user specifies another note path, use that path instead.
 
-## Obsidian Tooling
+## Obsidian CLI Tooling
 
-- Prefer `obsidian_append_content` for updates; it creates the file if missing.
-- Use `obsidian_get_file_contents` only when needed to reference existing notes.
+Use the official `obsidian` CLI, not the Obsidian MCP tools.
+
+1. Confirm the CLI is registered:
+   ```bash
+   command -v obsidian
+   obsidian version
+   ```
+   If `obsidian` is missing, tell the user the Obsidian CLI is not registered on this machine instead of falling back to MCP.
+2. Build the full timestamped entry in a shell variable or temporary file, preserving newlines:
+   ```bash
+   entry=$'### 2026-03-11 14:32\nSummary of what happened...\n'
+   ```
+3. Ensure the target scratchpad exists, then append:
+   ```bash
+   note="Scratchpads/2026-03-11-topic-name.md"
+   obsidian create path="$note" content="" 2>/dev/null || true
+   obsidian append path="$note" content="$entry"
+   ```
+   `obsidian append` does not reliably create missing files; always run `obsidian create ... || true` first.
+4. Read existing notes only when needed:
+   ```bash
+   obsidian read path="Scratchpads/2026-03-11-topic-name.md"
+   ```
 
 ## Content Requirements (be exhaustive)
 
