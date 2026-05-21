@@ -113,7 +113,12 @@ case "$trigger_reason" in
     ;;
 esac
 
-instruction=$(cat <<EOF
+# NOTE: assigned via `read -d ''` rather than `$(cat <<EOF ...)` on purpose.
+# A heredoc nested inside command substitution makes bash quote-scan the body
+# while hunting the closing `)`, so any apostrophe in the prose below (e.g.
+# "don't", "he's") triggers "unexpected EOF looking for matching `''". This
+# form keeps the body fully literal. `|| true` because read returns 1 at EOF.
+read -r -d '' instruction <<EOF || true
 Auto-rename hook ($trigger_reason): $framing
 
 Pick a 3-7 word title for this session that reflects its actual focus and outcome — not a generic descriptor. Should still make sense to Ben in 6 weeks when he's scrolling the session list. Lean specific over broad.
@@ -143,6 +148,5 @@ Persist your decision with ONE of the following — pick whichever fits, no need
 
 After it succeeds, stop normally — do not chain additional work. The hook tracks state in $STATE_FILE; the script resets the cumulative-turn counter for you, so you don't need to touch the state file directly.
 EOF
-)
 
 jq -n --arg reason "$instruction" '{"decision":"block","reason":$reason}'
