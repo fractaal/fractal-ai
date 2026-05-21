@@ -32,7 +32,7 @@ Write an exhaustive, living "doctor's notes" trail in Obsidian that mirrors the 
 
 - Default path: `Scratchpads/YYYY-MM-DD-<optional-topic-name-here>.md` using the current local date.
 - If the date is unclear, run `date +%F` to determine it.
-- Create the file if missing with `obsidian create path="Scratchpads/...md" content=""` before appending.
+- Create the file only if it is missing; do not blindly run `obsidian create` on an existing path because Obsidian may create a numbered duplicate.
 - If the user specifies another note path, use that path instead.
 
 ## Obsidian CLI Tooling
@@ -52,10 +52,13 @@ Use the official `obsidian` CLI, not the Obsidian MCP tools.
 3. Ensure the target scratchpad exists, then append:
    ```bash
    note="Scratchpads/2026-03-11-topic-name.md"
-   obsidian create path="$note" content="" 2>/dev/null || true
+   folder="${note%/*}"
+   if ! obsidian files folder="$folder" ext=md | grep -Fx -- "$note" >/dev/null; then
+     obsidian create path="$note" content=""
+   fi
    obsidian append path="$note" content="$entry"
    ```
-   `obsidian append` does not reliably create missing files; always run `obsidian create ... || true` first.
+   `obsidian append` does not reliably create missing files, but `obsidian create` may create a numbered duplicate if the file already exists. Check the file list first.
 4. Read existing notes only when needed:
    ```bash
    obsidian read path="Scratchpads/2026-03-11-topic-name.md"
