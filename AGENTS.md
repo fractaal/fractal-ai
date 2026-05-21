@@ -27,6 +27,11 @@ When adding new content, decide first whether it's tool-agnostic (lives at root 
 
 ## Working on this repo
 
+- **Push frequently — ideally after every coherent change.** This repo is the live
+  source of truth deployed by symlink; uncommitted files and unpushed commits sitting
+  here are a liability, not a staging area. Commit atomically as you finish each change
+  and `git push` promptly. Do not let local work pile up — the default posture is a
+  clean working tree and an in-sync `origin/main`.
 - Source-of-truth files only. Generated artifacts (e.g. `~/.claude/agents/code-reviewer.md`,
   produced by `claude/sync-agents.sh`) belong on the consuming machine, not here.
 - After editing source files, run `deploy/install.sh` (or `install.ps1`) to refresh
