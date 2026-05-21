@@ -177,7 +177,7 @@ function pauseInjectionForGuardrail(pi: ExtensionAPI, monitor: Monitor, reason: 
 	const warning = [
 		`⚠️ Monitor guardrail paused injected output for ${displayText(monitor.name)} (${monitor.id}).`,
 		reason,
-		"Monitors should emit meaningful, sparse events; do not point monitor_start at bare/raw deployment logs, server logs, tail -f, or journalctl streams that produce hundreds of lines.",
+		"Monitors should inject sparse, high-signal events. If you are watching a chatty source, re-run this monitor with the command filtered for the signal you care about — pipe through grep, or wrap the tail in a small script that emits one compact line per meaningful event — instead of streaming raw output.",
 		"The process is still running and its bounded tail buffer is still retained.",
 		`Use monitor_status with id=${monitor.id} to inspect recent output, or monitor_stop if this monitor is no longer useful.`,
 		`Dropped ${droppedPending} queued injected line${droppedPending === 1 ? "" : "s"} to protect session context.`,
@@ -217,7 +217,7 @@ function recordInjectedOutputBudget(pi: ExtensionAPI, monitor: Monitor, injected
 		pauseInjectionForGuardrail(
 			pi,
 			monitor,
-			`Injected output exceeded ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} bytes for this monitor. Monitors are event streams, not raw log transports.`,
+			`Injected output exceeded ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} bytes for this monitor. Filter the monitored command for the signal you care about (e.g. pipe through grep, or a wrapper script emitting one line per event) so it injects a sparse stream rather than a raw firehose.`,
 		);
 		return;
 	}
@@ -225,7 +225,7 @@ function recordInjectedOutputBudget(pi: ExtensionAPI, monitor: Monitor, injected
 		pauseInjectionForGuardrail(
 			pi,
 			monitor,
-			`Injected output exceeded ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} stdout/stderr lines for this monitor. Monitors are event streams, not raw log transports.`,
+			`Injected output exceeded ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} stdout/stderr lines for this monitor. Filter the monitored command for the signal you care about (e.g. pipe through grep, or a wrapper script emitting one line per event) so it injects a sparse stream rather than a raw firehose.`,
 		);
 	}
 }
@@ -451,15 +451,15 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		name: "monitor_start",
 		label: "Monitor Start",
 		description:
-			"Start an intentionally long-running shell command in the background and stream sparse, meaningful stdout/stderr events back into this Pi session over time. Use for dev servers, watch-mode tests, and persistent services. Do not use for ordinary one-shot commands that should finish (use bash for those), and do not point it at raw high-volume log streams such as tail -f, journalctl -f, docker/kubectl logs, or deployment logs — filter/summarize those upstream or set inject=false. Output is batched, line-limited, guarded, and retained as a tail buffer.",
+			"Start an intentionally long-running shell command in the background and stream sparse, meaningful stdout/stderr events back into this Pi session over time. Use for dev servers, watch-mode tests, persistent services, and long-running logs (tail -f, journalctl -f, docker/kubectl logs, deployment logs). Logs are usually chatty: filter the command for the signal you care about rather than streaming it raw — pipe through grep, or for a busy source point monitor_start at a small wrapper script that tails the source and emits one compact line per meaningful event. Stream a source unfiltered only when it is already naturally sparse, which is uncommon. Do not use for ordinary one-shot commands that should finish; use bash for those. Output is batched, line-limited, guarded, and retained as a tail buffer.",
 		promptSnippet:
-			"Start an intentionally long-running background command and stream sparse, meaningful events asynchronously; not for one-shot commands or raw log firehoses.",
+			"Start an intentionally long-running background command — a dev server, watch test, or a filtered/scripted log stream — and stream sparse, meaningful events asynchronously; not for one-shot commands.",
 		promptGuidelines: [
 			"Use bash, not monitor_start, for ordinary one-shot commands expected to finish, including ls, rg/grep/find, git status/diff, builds, linters, formatters, migrations, scripts, and non-watch tests; give bash an appropriate timeout if needed.",
-			"Use monitor_start only for intentionally long-running commands whose output needs to be watched over time or stopped later, such as dev servers, watch-mode tests, or persistent services.",
+			"Use monitor_start for intentionally long-running work whose output is watched over time or stopped later: dev servers, watch-mode tests, persistent services, and long-running logs (tail -f, journalctl -f, docker/kubectl logs, deployment logs).",
+			"Logs and other chatty sources should be filtered for signal, not streamed raw. For a simple case, pipe the command through grep. For a busy source, point monitor_start at a small wrapper script that tails the source, matches only the events that matter, and emits one compact, self-contained line per event — a short TYPE prefix per line lets the reader route by event class. Aim for one emitted line per meaningful event. Stream a source unfiltered only when it is already naturally sparse, which is uncommon for real logs.",
 			"Do not use monitor_start merely because a command may take a while; if final output or exit status matters, use bash.",
-			"Do not point monitor_start at raw high-volume log streams (tail -f, journalctl -f, docker/kubectl log streams, deployment logs). Filter/summarize those upstream, redirect full logs to a file, or set inject=false and inspect only a capped recent tail with monitor_status.",
-			`Injected output is guardrailed: more than ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines in one delivery cycle, more than ${MAX_LINES_PER_SECOND} lines/second, more than ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} total stdout/stderr lines, or more than ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} injected bytes pauses injection and emits a warning.`,
+			`Injected output is guardrailed: more than ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines in one delivery cycle, more than ${MAX_LINES_PER_SECOND} lines/second, more than ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} total stdout/stderr lines, or more than ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} injected bytes pauses injection and emits a warning — filter the command at the source to stay under these.`,
 			"Use monitor_status or monitor_list to inspect monitors created by monitor_start, and use monitor_stop when a running monitor is no longer needed.",
 		],
 		parameters: objectSchema(
@@ -586,7 +586,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			const statusTail = cappedTail > 0 ? buildStatusTail(monitor, cappedTail) : { tail: [], bytes: 0, omittedForByteCap: 0 };
 			const guardrailNotes = [
 				requestedTail > cappedTail
-					? `Requested ${requestedTail} tail lines; returned at most ${cappedTail}. Monitors are for sparse/high-signal events, not raw log dumps; redirect full logs to a file instead.`
+					? `Requested ${requestedTail} tail lines; returned at most ${cappedTail}. monitor_status returns a capped recent tail, not a full log — filter the monitored command for the signal you care about, or redirect its full output to a file you can read separately.`
 					: undefined,
 				statusTail.omittedForByteCap > 0
 					? `Omitted ${statusTail.omittedForByteCap} older tail entr${statusTail.omittedForByteCap === 1 ? "y" : "ies"} to keep status output under ${MAX_STATUS_TAIL_BYTES} bytes.`
