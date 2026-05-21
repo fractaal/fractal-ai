@@ -286,11 +286,14 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		name: "monitor_start",
 		label: "Monitor Start",
 		description:
-			"Start a long-running shell command in the background and stream stdout/stderr back into this Pi session as event messages. Useful for dev servers, test watchers, logs, and tail -f. Output is batched, line-limited, and retained as a tail buffer.",
-		promptSnippet: "Start a long-running shell command and stream stdout/stderr back into the session asynchronously.",
+			"Start an intentionally long-running shell command in the background and stream stdout/stderr back into this Pi session over time. Use for dev servers, watch-mode tests, tail -f, journalctl -f, docker/kubectl log streams, deployment logs, and persistent services. Do not use for ordinary one-shot commands that should finish; use bash for those.",
+		promptSnippet:
+			"Start an intentionally long-running background command and stream its output asynchronously; not for ordinary one-shot commands.",
 		promptGuidelines: [
-			"Use monitor_start instead of bash for long-running commands whose output should be watched asynchronously, such as dev servers, watch tests, tail -f, or journalctl -f.",
-			"Use monitor_status or monitor_list to inspect monitors, and use monitor_stop when a monitor is no longer needed.",
+			"Use bash, not monitor_start, for ordinary one-shot commands expected to finish, including ls, rg/grep/find, git status/diff, builds, linters, formatters, migrations, scripts, and non-watch tests; give bash an appropriate timeout if needed.",
+			"Use monitor_start only for intentionally long-running commands whose output needs to be watched over time or stopped later, such as dev servers, watch-mode tests, tail -f, journalctl -f, docker/kubectl log streams, deployment logs, or persistent services.",
+			"Do not use monitor_start merely because a command may take a while; if final output or exit status matters, use bash.",
+			"Use monitor_status or monitor_list to inspect monitors created by monitor_start, and use monitor_stop when a running monitor is no longer needed.",
 		],
 		parameters: objectSchema(
 			{
@@ -389,8 +392,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "monitor_status",
 		label: "Monitor Status",
-		description: "Show status and recent output for a background monitor.",
-		promptSnippet: "Show status and recent retained output for a background monitor.",
+		description: "Show status and recent output for a long-running background monitor created by monitor_start.",
+		promptSnippet: "Show status and recent retained output for a monitor_start background process.",
 		parameters: objectSchema(
 			{
 				id: stringSchema("Monitor ID returned by monitor_start."),
@@ -421,8 +424,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "monitor_list",
 		label: "Monitor List",
-		description: "List all known background monitors in this Pi process.",
-		promptSnippet: "List all known background monitors in this Pi process.",
+		description: "List all monitor_start background processes known to this Pi process.",
+		promptSnippet: "List all monitor_start background processes known to this Pi process.",
 		parameters: objectSchema({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			rememberUi(ctx);
@@ -437,8 +440,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "monitor_stop",
 		label: "Monitor Stop",
-		description: "Terminate a running background monitor by signaling its process group.",
-		promptSnippet: "Terminate a running background monitor by signaling its process group.",
+		description: "Terminate a running monitor_start background process by signaling its process group.",
+		promptSnippet: "Terminate a running monitor_start background process by signaling its process group.",
 		parameters: objectSchema(
 			{
 				id: stringSchema("Monitor ID returned by monitor_start."),
