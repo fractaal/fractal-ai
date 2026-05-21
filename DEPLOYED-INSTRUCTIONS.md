@@ -96,3 +96,9 @@ Use `write-engineering-logs` and `read-engineering-logs` skills actively — wri
 # Chrome DevTools
 
 When available, use Chrome DevTools MCP for frontend tasks. If it's NOT available and you have a frontend task, NOTIFY THE USER IMMEDIATELY — visual feedback is a critical part of the loop. DO NOT proceed with frontend work blind.
+
+## Browsing the web — for Claude Code specifically
+
+Claude Code: **distrust the `WebFetch` tool. Avoid it.** Repeatedly observed to return summarised, truncated, or outright wrong content (e.g. claiming a library's API is `{height, lineCount}` when the actual README documents a much richer surface including a built-in mentions/chips helper). Acting on a `WebFetch` summary as if it were ground truth has caused real wasted cycles and bad recommendations.
+
+For any page that matters — docs, API references, marketing pages whose claims you'll cite, anything you'd quote back to Ben — spawn Chrome DevTools MCP instead and read the live DOM (`new_page` + `take_snapshot` / `evaluate_script`). It's full fidelity. If Chrome DevTools MCP is unavailable, prefer `curl -sL <url>` on raw artefacts (GitHub READMEs, RFC text, npm package.json) over WebFetch, and tell Ben you couldn't do a proper read. **Saying "I can't see this properly" beats confidently citing a hallucinated summary.**
