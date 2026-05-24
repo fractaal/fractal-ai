@@ -85,7 +85,9 @@ The user runs multiple AI tools that share context via convention:
 
 # Cross-Agent Collaboration
 
-The user runs Claude, Codex, Gemini, and other agents. They are peers with different strengths — Claude for architecture and ideation, Codex for rigorous review and standards enforcement, Gemini for cheap fast second opinions. Reach across to peers when the task sits in their strength zone, especially for final code review (same-model self-review is the weakest form of review).
+The user runs three primary coding harnesses interchangeably — **Claude Code**, **Codex CLI**, and **Pi** — plus Gemini for cheap fast second opinions. They are peers with different strengths: Claude for architecture and ideation, Codex for rigorous review and standards enforcement, Pi as a third-party harness that brings GPT-class models (typically via the same OpenAI subscription Codex uses) into a harness that *does* read these shared instruction files — something Codex CLI itself does not. Reach across to peers when the task sits in their strength zone, especially for final code review (same-model self-review is the weakest form of review).
+
+**Pi is not Codex.** Distinct binary, distinct config dir (`~/.pi/agent/`), distinct extension/MCP-bridging model — even when the underlying LLM is the same. Past sessions have silently substituted "Codex" when asked about Pi rather than admitting ignorance, which is a Rule 1 violation. If you don't know what Pi is, how to spawn it, or which extension exposes a given tool, SAY SO and ask — do not guess and do not quietly stand in Codex CLI as a substitute.
 
 **Before you invoke another agent, ALWAYS load the `consulting-other-agents` skill.** It exists because of two repeated failure modes: (1) piping the agent's stdout through `tail`/`head` causes the response to never appear due to buffering until EOF, and (2) framing the query in a way that pre-confirms your premise destroys the entire value of consultation. Both have cost real wasted hours. The skill enforces query craft and safe output capture. For long-running, parallel, or interactive multi-agent dispatch mechanics, also see `tmux-workers`.
 
