@@ -62,7 +62,7 @@ class CodexProvider(Provider):
         sid = ""
         bucket = self.bucket_from_path(path)
 
-        started_at = ended_at = cwd = git_branch = ""
+        started_at = ended_at = cwd = git_branch = model = ""
         user_count = assistant_count = tool_use_count = 0
         first_user = last_assistant = ""
 
@@ -81,6 +81,8 @@ class CodexProvider(Provider):
                     sid = payload.get("id", "")
                 if not cwd:
                     cwd = payload.get("cwd", "")
+                if not model:
+                    model = self._extract_model_from_meta(payload)
 
             elif etype == "response_item":
                 payload = event.get("payload", {})
@@ -121,9 +123,10 @@ class CodexProvider(Provider):
             tool_use_count=tool_use_count,
             first_user=first_user,
             last_assistant=last_assistant,
+            model=model,
         )
 
-    def load_events(self, path: Path, *, include_meta: bool = False) -> list[NormalizedEvent]:
+    def load_events(self, path: Path, *, include_meta: bool = False, include_thinking: bool = False) -> list[NormalizedEvent]:
         raw = load_jsonl(path)
         events: list[NormalizedEvent] = []
         for event in raw:
@@ -196,6 +199,21 @@ class CodexProvider(Provider):
                 ))
 
         return events
+
+    @staticmethod
+    def _extract_model_from_meta(payload: dict[str, Any]) -> str:
+        import re
+        bi = payload.get("base_instructions")
+        if isinstance(bi, dict):
+            text = bi.get("text", "")
+        elif isinstance(bi, str):
+            text = bi
+        else:
+            text = ""
+        m = re.search(r"based on ([\w.-]+)", text, re.IGNORECASE)
+        if m:
+            return m.group(1).lower()
+        return payload.get("model_provider", "")
 
     @staticmethod
     def _is_injected_context(text: str) -> bool:

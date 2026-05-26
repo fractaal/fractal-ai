@@ -57,7 +57,7 @@ class PiProvider(Provider):
         bucket = self.bucket_from_path(path)
         name = self.session_name(path, events)
 
-        started_at = ended_at = cwd = git_branch = ""
+        started_at = ended_at = cwd = git_branch = model = ""
         user_count = assistant_count = tool_use_count = 0
         first_user = last_assistant = ""
 
@@ -75,6 +75,11 @@ class PiProvider(Provider):
                     v = event.get("cwd")
                     if isinstance(v, str):
                         cwd = v
+
+            if etype == "model_change" and not model:
+                v = event.get("modelId")
+                if isinstance(v, str):
+                    model = v
 
             if etype == "message":
                 msg = event.get("message", {})
@@ -107,9 +112,10 @@ class PiProvider(Provider):
             tool_use_count=tool_use_count,
             first_user=first_user,
             last_assistant=last_assistant,
+            model=model,
         )
 
-    def load_events(self, path: Path, *, include_meta: bool = False) -> list[NormalizedEvent]:
+    def load_events(self, path: Path, *, include_meta: bool = False, include_thinking: bool = False) -> list[NormalizedEvent]:
         raw = load_jsonl(path)
         events: list[NormalizedEvent] = []
         for event in raw:

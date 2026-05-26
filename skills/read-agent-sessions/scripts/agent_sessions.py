@@ -183,6 +183,17 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prerender(args: argparse.Namespace) -> int:
+    from prerender import prerender
+    output_dir = Path(args.output)
+    return prerender(
+        output_dir,
+        force=args.force,
+        min_turns=args.min_turns,
+        dry_run=args.dry_run,
+    )
+
+
 def resolve_target(args: argparse.Namespace) -> tuple[Provider, Path]:
     target = args.target
     harness_filter = getattr(args, "harness", None)
@@ -289,6 +300,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-meta", action="store_true", help="Include meta/system noise.")
     p.add_argument("--max-chars", type=int, default=280, help="Max chars per segment.")
     p.set_defaults(func=cmd_render)
+
+    # prerender
+    p = sub.add_parser("prerender", help="Prerender sessions as Markdown into Obsidian vault for qmd indexing.")
+    p.add_argument("--output", type=str, default=str(Path.home() / "Dropbox" / "DropsyncFiles" / "MindPalace" / "Sessions"),
+                   help="Output directory for rendered Markdown files.")
+    p.add_argument("--force", action="store_true", help="Re-render all sessions, ignoring manifest.")
+    p.add_argument("--min-turns", type=int, default=3, help="Skip sessions with fewer user turns.")
+    p.add_argument("--dry-run", action="store_true", help="Show what would be rendered without writing.")
+    p.set_defaults(func=cmd_prerender)
 
     return parser
 

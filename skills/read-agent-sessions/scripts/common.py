@@ -33,6 +33,7 @@ class SessionMeta:
     tool_use_count: int
     first_user: str
     last_assistant: str
+    model: str = ""
 
 
 class Provider(ABC):
@@ -55,7 +56,7 @@ class Provider(ABC):
     def summarize(self, path: Path) -> SessionMeta: ...
 
     @abstractmethod
-    def load_events(self, path: Path, *, include_meta: bool = False) -> list[NormalizedEvent]: ...
+    def load_events(self, path: Path, *, include_meta: bool = False, include_thinking: bool = False) -> list[NormalizedEvent]: ...
 
 
 def normalize_whitespace(text: str) -> str:

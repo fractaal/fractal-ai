@@ -11,22 +11,34 @@ from common import NormalizedEvent, SessionMeta, Provider, clip, normalize_white
 
 CLAUDE_ROOT = Path.home() / ".claude" / "projects"
 CLAUDE_REGISTRY = Path.home() / ".claude" / "sessions"
+CLAUDE_RENAME_STATE = Path.home() / ".claude" / "state" / "auto-rename.json"
 
 
 def _load_session_names() -> dict[str, str]:
-    """Map sessionId → human name from the auto-rename registry."""
+    """Map sessionId → human name from active registry + auto-rename state."""
     names: dict[str, str] = {}
-    if not CLAUDE_REGISTRY.exists():
-        return names
-    for f in CLAUDE_REGISTRY.glob("*.json"):
+    # auto-rename.json has names for all historical sessions (251+)
+    if CLAUDE_RENAME_STATE.exists():
         try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            sid = data.get("sessionId")
-            name = data.get("name")
-            if sid and name:
-                names[sid] = name
+            data = json.loads(CLAUDE_RENAME_STATE.read_text(encoding="utf-8"))
+            for sid, info in data.items():
+                if isinstance(info, dict):
+                    name = info.get("lastSeenName")
+                    if name:
+                        names[sid] = name
         except (json.JSONDecodeError, OSError):
-            continue
+            pass
+    # Active session registry overrides (has the most current name)
+    if CLAUDE_REGISTRY.exists():
+        for f in CLAUDE_REGISTRY.glob("*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                sid = data.get("sessionId")
+                name = data.get("name")
+                if sid and name:
+                    names[sid] = name
+            except (json.JSONDecodeError, OSError):
+                continue
     return names
 
 
@@ -41,7 +53,7 @@ def _is_local_command_noise(text: str) -> bool:
 
 
 def _extract_content_parts(
-    content: Any, *, include_meta: bool
+    content: Any, *, include_meta: bool, include_thinking: bool = False
 ) -> list[NormalizedEvent]:
     """Walk a Claude message.content array and yield normalized events."""
     if isinstance(content, str):
@@ -80,10 +92,11 @@ def _extract_content_parts(
             rendered = _render_tool_result(content_value)
             if rendered:
                 parts.append(NormalizedEvent(timestamp="", role="tool_result", content=rendered))
-        elif include_meta and item_type == "thinking":
+        elif (include_meta or include_thinking) and item_type == "thinking":
             thinking = item.get("thinking")
             if isinstance(thinking, str) and thinking.strip():
-                parts.append(NormalizedEvent(timestamp="", role="thinking", content=clip(thinking, 180)))
+                max_len = 180 if include_meta and not include_thinking else 2000
+                parts.append(NormalizedEvent(timestamp="", role="thinking", content=clip(thinking, max_len)))
     return parts
 
 
@@ -148,7 +161,7 @@ class ClaudeProvider(Provider):
         bucket = self.bucket_from_path(path)
         name = self.session_name(path, events)
 
-        started_at = ended_at = cwd = git_branch = ""
+        started_at = ended_at = cwd = git_branch = model = ""
         user_count = assistant_count = tool_use_count = 0
         first_user = last_assistant = ""
 
@@ -171,6 +184,11 @@ class ClaudeProvider(Provider):
 
             event_type = event.get("type")
             message = event.get("message")
+
+            if not model and isinstance(message, dict):
+                v = message.get("model")
+                if isinstance(v, str):
+                    model = v
 
             if event_type == "user":
                 user_count += 1
@@ -215,9 +233,10 @@ class ClaudeProvider(Provider):
             tool_use_count=tool_use_count,
             first_user=first_user,
             last_assistant=last_assistant,
+            model=model,
         )
 
-    def load_events(self, path: Path, *, include_meta: bool = False) -> list[NormalizedEvent]:
+    def load_events(self, path: Path, *, include_meta: bool = False, include_thinking: bool = False) -> list[NormalizedEvent]:
         raw = load_jsonl(path)
         events: list[NormalizedEvent] = []
         for event in raw:
@@ -229,26 +248,45 @@ class ClaudeProvider(Provider):
 
             timestamp = str(event.get("timestamp") or "")
             subtype = event.get("subtype")
-            role = event_type if not subtype else f"{event_type}/{subtype}"
+            parent_role = event_type if not subtype else f"{event_type}/{subtype}"
 
             message = event.get("message")
             content = message.get("content") if isinstance(message, dict) else event.get("content")
-            parts = _extract_content_parts(content, include_meta=include_meta)
+            parts = _extract_content_parts(content, include_meta=include_meta, include_thinking=include_thinking)
 
             if not parts:
                 if include_meta:
                     events.append(NormalizedEvent(
-                        timestamp=timestamp, role=role,
+                        timestamp=timestamp, role=parent_role,
                         content=clip(json.dumps(event, ensure_ascii=False), 280),
                         harness="Claude",
                     ))
                 continue
 
-            body = "\n".join(clip(p.content, 280) for p in parts if p.content.strip())
-            if body:
+            # Emit each part with its own role instead of merging
+            text_parts: list[str] = []
+            for part in parts:
+                if part.role in ("tool_use", "tool_result", "thinking"):
+                    # Flush accumulated text first
+                    if text_parts:
+                        events.append(NormalizedEvent(
+                            timestamp=timestamp, role=parent_role,
+                            content="\n".join(text_parts), harness="Claude",
+                        ))
+                        text_parts = []
+                    events.append(NormalizedEvent(
+                        timestamp=timestamp, role=part.role,
+                        content=part.content, harness="Claude",
+                        tool_name=part.tool_name,
+                    ))
+                elif part.content.strip():
+                    text_parts.append(part.content)
+
+            if text_parts:
                 events.append(NormalizedEvent(
-                    timestamp=timestamp, role=role, content=body, harness="Claude",
-                    tool_name=next((p.tool_name for p in parts if p.tool_name), None),
+                    timestamp=timestamp, role=parent_role,
+                    content="\n".join(text_parts), harness="Claude",
                 ))
+
         return events
 
