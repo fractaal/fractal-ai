@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import re
 import sys
 from dataclasses import dataclass
@@ -49,15 +50,18 @@ def model_slug(model: str) -> str:
     return slug.strip("-")
 
 
+HOSTNAME = platform.node().lower() or "unknown"
+
+
 def session_filename(meta: SessionMeta) -> str:
-    """Build filename: 2026-05-22.Session-Name.claude.claude-opus-4-7.md"""
+    """Build filename: 2026-05-22.Session-Name.claude.claude-opus-4-7.unixboat.md"""
     date = (meta.started_at or meta.ended_at or "")[:10]
     if not date or len(date) != 10:
         date = "undated"
     name = slugify(meta.name or meta.first_user or "untitled")
     harness = meta.harness.lower()
     model = model_slug(meta.model)
-    return f"{date}.{name}.{harness}.{model}.md"
+    return f"{date}.{name}.{harness}.{model}.{HOSTNAME}.md"
 
 
 def format_timestamp_short(ts: str) -> str:
@@ -88,6 +92,7 @@ def render_session_to_markdown(
     lines.append(f"user_turns: {meta.user_count}")
     lines.append(f"assistant_turns: {meta.assistant_count}")
     lines.append(f"tool_uses: {meta.tool_use_count}")
+    lines.append(f"host: {HOSTNAME}")
     lines.append(f"source: {meta.path}")
     lines.append("---")
     lines.append("")
