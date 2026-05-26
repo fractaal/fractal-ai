@@ -29,11 +29,35 @@ These are the patterns that have actually worked in past sessions. Improvising
 on flags or quoting has burned real time on this codebase. **When in doubt,
 copy one of these exactly and substitute only the prompt-file path.**
 
+## Default readback: `read-agent-sessions`, not stdout
+
+Agent stdout is a convenience stream, not the source of truth. It can be empty,
+truncated, blocked behind hooks, buffered behind a pipe, or missing the final
+answer even when the agent completed the work. The durable transcript is the
+source of truth.
+
+After launching any peer agent, default to reading it back with
+`read-agent-sessions`:
+
+```bash
+read-agent-sessions recent --limit 15
+read-agent-sessions recent --harness claude --limit 10
+read-agent-sessions recent --harness pi --limit 10
+read-agent-sessions recent --harness codex --limit 10
+read-agent-sessions summary <session-id-prefix>
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
+```
+
+Use stdout files, tmux scrollback, or `tee` as live progress hints only. Before
+respawning an agent because output looked empty or incomplete, inspect the
+session transcript. Rerunning without checking the transcript wastes usage and
+can produce duplicate/conflicting review.
+
 ### `pi` — Pi CLI (GPT-5.x; THE default for backend / correctness consultations)
 
 Pi runs GPT-5.5 and is the go-to for backend, correctness, and code-review consultations. **Always use Pi over Codex** — they're the same model family, but Pi is more reliable in practice (reads shared instruction files, no auth flakiness, better interactive workflow).
 
-Pi is interactive REPL only — no headless `pi exec`. Drive it via the `tmux-workers` skill (load that before invoking):
+Pi is interactive REPL only — no headless `pi exec`. Drive it via the `tmux-workers` skill (load that before invoking). Use the pane for live steering, then use `read-agent-sessions --harness pi` for durable readback:
 
 ```bash
 PANE=$(~/.claude/skills/tmux-workers/scripts/launch-agent.sh --cmd pi \
@@ -41,7 +65,10 @@ PANE=$(~/.claude/skills/tmux-workers/scripts/launch-agent.sh --cmd pi \
 ~/.claude/skills/tmux-workers/scripts/send-keys-then-enter.sh "$PANE" \
   'Read /tmp/<brief>.md in full and report back.'
 # Block via Monitor tool (Claude Code) — never inline wait-for.sh, it burns
-# your context. Capture the pane scrollback when Pi goes idle.
+# your context. Use pane scrollback only as a live hint; read the final answer
+# from the Pi session transcript:
+read-agent-sessions recent --harness pi --limit 10
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
 ```
 
 Same brief discipline applies as for all agents — brief in a file (send-keys submits on first newline), intent-level not diff-level, no leading questions, mark codebase claims as beliefs not facts. The four failure modes below apply identically to Pi.
@@ -83,16 +110,18 @@ Non-negotiables:
 - **`-c model_reasoning_effort=high`** unless you have a specific reason
   to want lower effort. Codex's value is rigor; lower effort wastes the
   invocation.
-- **Redirect to a file, run in background.** Codex consultations can take
-  10+ minutes. Use the Bash tool's `run_in_background=true` so you get
-  notified on completion. Read the file when done. NEVER pipe the live
-  process through `tail`/`head`/`sed`/`awk` — those buffer until EOF.
+- **Redirect to a file, run in background, then read the transcript.** Codex
+  consultations can take 10+ minutes. Use the Bash tool's background mode or
+  an output file for progress capture, but treat `read-agent-sessions --harness
+  codex` as the authoritative readback. NEVER pipe the live process through
+  `tail`/`head`/`sed`/`awk` — those buffer until EOF.
 - **DO NOT** combine multiple commands on the same line as the codex
   invocation without `&&` / `;` separators. Bash will glue them into one
   command and they will all become additional codex arguments.
 
 If you want output to flow to a pane in real time AND land in a file, the
-proven pattern is `tee` inside `tmux-workers`:
+proven pattern is `tee` inside `tmux-workers`. Still use `read-agent-sessions`
+for the final answer:
 
 ```bash
 tmux send-keys -t "$PANE" \
@@ -103,13 +132,28 @@ tmux send-keys -t "$PANE" \
 
 ```bash
 claude -p "$(cat /tmp/prompt.md)" --dangerously-skip-permissions > /tmp/claude.out 2>&1
+read-agent-sessions recent --harness claude --limit 10
+read-agent-sessions summary <session-id-prefix>
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
 ```
 
-`claude -p` accepts the prompt as a positional arg cleanly because the
-CLI shells out internally; `--dangerously-skip-permissions` is required
-unless you've aliased it. For a sustained peer — many briefs across one
-session — run it interactively via the `tmux-workers` skill rather than
-repeated one-shots.
+`claude -p` accepts the prompt as a positional arg cleanly because the CLI
+shells out internally; `--dangerously-skip-permissions` is required unless
+you've aliased it. For a sustained peer — many briefs across one session — run
+it interactively via the `tmux-workers` skill rather than repeated one-shots.
+
+**Important local gotcha / source of truth:** Ben's Claude sessions run Stop
+hooks, including the auto-rename/name-enforcement hook. A `claude -p`
+consultation can do real work and write a complete answer into its session
+JSONL, but still leave the redirected stdout file empty or nearly empty when
+the Stop hook interrupts the normal print-mode completion flow and the model
+services the hook by renaming the session. Empty stdout is therefore NOT proof
+that the consultation failed.
+
+For Claude consultations, the session transcript is the normal readback path.
+Only respawn a `claude -p` reviewer after checking `read-agent-sessions` and
+verifying there is no usable answer there. Do not waste usage by rerunning
+merely because stdout was empty.
 
 ### Resuming a Codex session
 
@@ -121,6 +165,8 @@ codex exec resume "$CODEX_SESSION" --dangerously-bypass-approvals-and-sandbox \
   -c model_reasoning_effort=high \
   - < /tmp/followup-prompt.md \
   > /tmp/codex-followup.out 2>&1
+read-agent-sessions recent --harness codex --limit 10
+read-agent-sessions render "$CODEX_SESSION" --tail 80 --max-chars 6000
 ```
 
 ## The failure modes this skill prevents
@@ -147,36 +193,42 @@ before printing. `grep --line-buffered` is the rare exception.
 
 **Use one of these patterns instead:**
 
-**A) Run in background with a real output file.** Best for any agent
+**A) Run in background, then read the session transcript.** Best for any agent
 invocation that might take more than ~30 seconds:
 
 ```bash
-# Note: Bash tool's run_in_background=true automatically writes to a file
-# you can read separately. Use that. Then `cat` or `grep` the file when
-# the bg job completes. NEVER pipe through tail mid-flight.
+# Use a background command or output file for process status/progress.
+# Then read the durable transcript, not just the stdout file:
+read-agent-sessions recent --limit 15
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
+# NEVER pipe through tail mid-flight.
 ```
 
 **B) `tee` to a file and let stdout flow.** Best when you want to see
-output live AND keep a record:
+output live AND keep a progress record. The final read still comes from the
+session transcript:
 
 ```bash
 codex exec --model gpt-5.5 'prompt...' 2>&1 | tee /tmp/codex-$$.out
-# Read the file afterward, not the tail of the pipe
+read-agent-sessions recent --harness codex --limit 10
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
 ```
 
 **C) Just don't pipe.** Codex/Claude/Gemini output is rarely so large
 that you can't take it raw. If you're worried about clutter, capture to a
-file and grep specific sections:
+file for progress and read the transcript for the answer:
 
 ```bash
 codex exec --model gpt-5.5 'prompt...' > /tmp/codex.out 2>&1
-grep -A20 'Recommendation' /tmp/codex.out
+read-agent-sessions recent --harness codex --limit 10
+read-agent-sessions render <session-id-prefix> --tail 80 --max-chars 6000
 ```
 
 **D) For long-running, parallel, or fully-interactive consultations**,
 use the `tmux-workers` skill instead — it handles the full interactive
 pane lifecycle: launch the agent CLI, brief it, block until it goes idle,
-read it back, and steer it mid-task.
+and steer it mid-task. Use `read-agent-sessions` afterward for the durable
+answer.
 
 ### Failure 2 — leading the witness
 
@@ -440,9 +492,14 @@ than half-do it and then ask for confirmation.
 
 Before you launch a Pi worker, invoke `claude -p`, or any equivalent, confirm:
 
-- [ ] **Output capture is sane.** Either `run_in_background=true` (Bash
-      tool will write to a file you can read), or `tee /tmp/x.out`, or
-      no pipe at all. **Never** `| tail -N` or `| head -N` mid-flight.
+- [ ] **Readback plan is transcript-first.** You know which harness you are
+      launching and will use `read-agent-sessions recent/summary/render` to
+      read the final answer. Stdout files, tmux scrollback, and `tee` are
+      progress hints only.
+- [ ] **Output capture is sane.** Either background/output-file capture, `tee`,
+      or no pipe at all. **Never** `| tail -N` or `| head -N` mid-flight, and
+      never respawn an agent for empty stdout until you have checked its
+      transcript.
 - [ ] **Query invites disagreement.** Includes "challenge the framing,"
       "is the premise wrong," or explicit "here's what I haven't
       verified" disclaimers. Does not bake your conclusion into the
