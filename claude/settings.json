@@ -36,6 +36,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"WebFetch is BANNED. It returns summarised, truncated, or outright wrong content. Use Chrome DevTools MCP instead: mcp__chrome-devtools__new_page to open a URL, then mcp__chrome-devtools__take_snapshot to read the live DOM. If Chrome DevTools MCP is unavailable, use `curl -sL <url>` via Bash for raw artifacts. Say \\\"I cannot read this properly\\\" rather than trusting WebFetch output.\"}}'",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
@@ -70,6 +80,16 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/subagent_nudge.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/skill_change_nudge.sh",
             "timeout": 10
           }
         ]
