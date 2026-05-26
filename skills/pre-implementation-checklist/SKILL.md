@@ -35,6 +35,8 @@ Before writing code, trace the ENTIRE path the feature will take through the sys
 - What does the output look like?
 - Who/what consumes the output?
 
+**TRACE THE USER'S PATH, NOT THE ENDPOINT'S.** Start at the user's FIRST real action — the actual thing a human does — and recognize there is often MORE THAN ONE entry: creating a thread is a different path than sending into one; a first message is a different path than a follow-up. Enumerate EVERY entry the user can take to reach this feature, and trace each one. A feature scoped to "the endpoint I'm touching" instead of "every way the user gets here" is already HALF-BUILT before the first line of code.
+
 Write this path down. You will verify each link exists (or needs to be built) in the next phases.
 
 ---
@@ -131,6 +133,26 @@ demonstrably holds in the deployment environment, you are not ready to
 write this code. Coordinating one writer at a time — and discovering the
 next unprotected writer only when it races — is how a single design pass
 turns into a multi-round spiral.
+
+### Check the sibling paths — who ELSE is on this feature's path
+
+Concurrency, above, is about writers RACING. This is different and JUST AS
+DEADLY: a sibling path that runs BEFORE yours, perfectly sequentially, and
+changes the state your feature reads — leaving your new code a SILENT NO-OP.
+
+If your feature reads or depends on ANY shared state — a flag, a list, a
+field, an "already-seen" set, a counter — you MUST `grep` for EVERY existing
+code path that writes it, and ask: **can one of them run before mine and
+make my code do nothing?**
+
+This is not hypothetical. A real failure: an announce-on-send feature was
+added to one endpoint and verified correct THERE — but thread creation, a
+pre-existing untouched path, already called the same `announceUser` and
+consumed the "first announce." Every later path then read "already
+announced" and skipped silently. The feature was DEAD for its primary case,
+and NOT ONE LINE of the defeating code was in the diff. If you cannot name
+every path that touches your feature's state, you do not yet understand the
+feature — and you are NOT READY to write code.
 
 ---
 

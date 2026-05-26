@@ -1,0 +1,4 @@
+interface:
+  display_name: "Read Agent Sessions"
+  short_description: "Search and read session history across Claude, Pi, and Codex"
+  default_prompt: "Use $read-agent-sessions to recover context from a prior session in any harness (Claude, Pi, or Codex)."

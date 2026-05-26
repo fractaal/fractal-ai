@@ -17,6 +17,8 @@ That is the class of failure this checklist prevents.
 
 For EVERY feature or behavior you implemented, trace the complete execution path from user action to system outcome. Not conceptually — actually trace it through the code.
 
+**🚨 THE DIFF IS NOT THE FEATURE. IF THE ONLY FILES YOU OPENED DURING THIS TRACE ARE THE FILES YOU CHANGED, YOU HAVE NOT DONE THIS PHASE.** The trace starts at the user's FIRST action and follows EVERY hop to the outcome — through pre-existing, untouched, years-old code, through sibling paths, through every file on the way. The link that silently kills a feature is almost always in code that was NEVER in the diff: a sibling path that runs first and consumes a one-shot, flips a flag, or fills an "already-seen" set — leaving your new code a no-op. A reviewer reading the diff will NEVER catch that; only walking the user's actual journey, end to end, does. So walk it. And `grep` every reader and writer of any shared state your feature depends on — NAME EVERY PATH THAT CAN BREAK IT.
+
 ### How to trace
 
 Pick the most important user-facing scenario for each feature. Then walk it:

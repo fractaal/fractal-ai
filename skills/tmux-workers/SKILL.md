@@ -1,368 +1,350 @@
 ---
 name: tmux-workers
 description: >-
-  Spawn, drive, and read back from tmux panes as shell workers or subagent
-  workers. Use when you need to: run long-running jobs in parallel without
-  blocking your main context, orchestrate multiple Claude CLI subagents via
-  pane I/O, or interactively control shells and read their output programmatically.
-  Keyword triggers: "run in parallel", "spawn a worker", "background agent",
-  "tmux pane", "subagent in tmux".
+  Spawn an agent CLI (Pi, Codex, a peer Claude) into a live tmux window, brief
+  it, steer it with send-keys, and block on it until it goes idle — all
+  interactively. The window is a SHARED SURFACE: you drive it, and the human
+  can open the same window and type into it too. Use this whenever you run a
+  peer agent as a sustained worker — an implementer, a reviewer, an
+  investigator — across many briefs and follow-ups. Ships helper scripts:
+  launch-agent.sh, send-keys-then-enter.sh, wait-for-text.sh, wait-for.sh.
+  Non-interactive shell/headless workers are the appendix here, not the
+  headline.
+  Keyword triggers: "spawn an agent", "run Pi in a pane", "run Codex in a
+  pane", "peer agent", "tmux pane", "drive an agent", "wait for the agent",
+  "block on the agent", "interactive agent worker", "agent in a window",
+  "steer the agent".
 ---
 
 # tmux Workers
 
-## Overview
+## What this is for
 
-You are already running inside a tmux pane. The tmux server socket is live and you have full `tmux` access via `Bash`. This skill gives you a repeatable, disciplined pattern for:
+You run a peer agent CLI — Pi, Codex, a peer Claude — as a **sustained worker**
+inside a tmux window. You launch it, brief it, watch it, steer it mid-task,
+read its output, and hand it the next job — across a whole collaboration.
 
-1. **Shell workers** — run commands in isolated panes, tail their output, and clean up.
-2. **Subagent workers** — spawn a `claude` CLI subagent in a pane, feed it a prompt, poll until done, and read the result back.
-3. **Parallel fan-out** — spin up N workers at once, await all, collect results.
-4. **Persistent peer agent** — run a peer agent (e.g. Codex) as a long-lived interactive REPL in a pane that both you *and the user* can drive. **Preferred for sustained peer-agent collaboration** — see Pattern 6.
+The agent runs **interactively**, not headless, and that is the entire point:
+
+- The window is **inspectable** — you (and the human) watch the agent work live.
+- The window is a **shared surface** — the human can switch to that window and
+  type into the *same pane*, as a third hand, to correct or steer the agent
+  mid-task. A headless `codex exec` is a sealed box; nobody can see in or reach
+  in. An interactive pane is a room everyone can walk into.
+- The REPL **keeps full context** across every follow-up. You send the next
+  brief into the same window — no session-ID juggling, no cold restarts.
+
+This skill is the interactive pattern, scripted. Non-interactive workers
+(headless one-shots, background shell jobs) still exist — they are the
+**Appendix** at the bottom, not the body.
 
 ## Prerequisites
 
-- You must be inside a tmux session (`$TMUX` is set). Verify: `echo $TMUX_PANE`.
+- You are inside a tmux session. Verify: `echo $TMUX` is non-empty.
 - `tmux` is on `$PATH`.
-- For subagent workers: your chosen agent CLI is on `$PATH` (e.g. `claude`, `codex`, `sgpt`).
+- The agent CLI you want is on `$PATH` (`pi`, `codex`, `claude`, …).
+- The helper scripts in `scripts/` are executable (they ship `+x`).
 
 ---
 
-## Core Primitives
+## The interactive agent lifecycle
 
-### Spawn a pane
+Six steps. Steps 3→5 loop for as long as the collaboration runs.
 
-```bash
-PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
-# -h  = horizontal split (side by side); use -v for vertical
-# -d  = do not switch focus to new pane
-# -P  = print new pane info
-# -F  = format: just the pane ID (%N)
+```
+ 1. LAUNCH    open a window, start the agent CLI         launch-agent.sh
+ 2. BRIEF     write the brief to a file, send a one-liner send-keys-then-enter.sh
+ 3. BLOCK     wait until the agent goes idle             wait-for.sh
+ 4. READ      capture the pane scrollback                tmux capture-pane -S
+ 5. FOLLOW UP send the next brief into the SAME window   send-keys-then-enter.sh
+ 6. CLEANUP   kill the window when the WHOLE job is over tmux kill-window
 ```
 
-### Send a command
-
-```bash
-tmux send-keys -t "$PANE" "your command here" Enter
-```
-
-### Read pane output (visible buffer)
-
-```bash
-tmux capture-pane -p -t "$PANE"
-```
-
-### Read full scrollback (all history)
-
-```bash
-tmux capture-pane -p -S - -t "$PANE"
-```
-
-### Kill a pane when done
-
-```bash
-tmux kill-pane -t "$PANE"
-```
-
-### List all panes in current window
-
-```bash
-tmux list-panes -F "#{pane_id} #{pane_pid} #{pane_current_command}"
-```
+The agent process is a REPL — it **never exits** between turns. So you do not
+wait for a shell prompt to return (that is the non-interactive model). You wait
+for the agent's **busy marker to disappear**. That is what step 3 does.
 
 ---
 
-## Pattern 1 — Shell Worker
+## The helper scripts
 
-Run a command in a background pane, poll until the shell prompt returns, then read output.
+All four live in `scripts/`. They are pure bash + tmux — portable across every
+agent that ships this skill. Run any with no args for usage.
+
+### `launch-agent.sh` — open an agent in its own window
 
 ```bash
-# 1. Spawn
-PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
-
-# 2. Run
-tmux send-keys -t "$PANE" "my-long-running-command 2>&1 | tee /tmp/worker-out.txt" Enter
-
-# 3. Poll (check if command finished — prompt reappears)
-scripts/poll_pane_done.sh "$PANE"
-
-# 4. Read
-cat /tmp/worker-out.txt
-
-# 5. Cleanup
-tmux kill-pane -t "$PANE"
+PANE=$(scripts/launch-agent.sh --cmd pi \
+  --dir ~/Symph/symph-aria/.worktrees/feature-x \
+  --name pi-feature-x)
 ```
 
-**Tip:** Always `tee` output to a temp file. `capture-pane` only shows the visible viewport; the file gives you the full output regardless of scrollback limits.
+`tmux new-window` rooted in `--dir`, named `--name` (pick something findable —
+the human navigates by it), launches `--cmd`, waits `--boot-wait` seconds (or
+polls `--ready <regex>`), then prints **only the pane id** to stdout. `--here`
+splits the current window instead, for side-by-side.
+
+### `send-keys-then-enter.sh` — type a prompt and submit it
+
+```bash
+scripts/send-keys-then-enter.sh "$PANE" \
+  'Read /tmp/brief.md in full and implement it. Commit when done.'
+```
+
+Sends the text literally (`send-keys -l`, so no word is mistaken for a key
+name), then a separate `Enter`, then **verifies it submitted** — see "The
+submit quirk" below. `--no-verify` skips the check; `--settle S` tunes the
+gap before Enter.
+
+### `wait-for-text.sh` — block until a string appears or vanishes
+
+```bash
+scripts/wait-for-text.sh "$PANE" 'BUILD PASSED'              # wait to appear
+scripts/wait-for-text.sh "$PANE" 'Working\.\.\.' --gone      # wait to vanish
+```
+
+Polls the pane. `--gone` inverts (wait for absence — this is the "wait for the
+busy marker to disappear" move). `--stable N` requires the condition to hold N
+consecutive polls, so a redraw blip cannot end the wait early. `--timeout`,
+`--interval`, `--quiet`. Exit 0 met · 1 timeout · 2 pane gone.
+
+### `wait-for.sh` — block until an agent finishes its turn
+
+```bash
+scripts/wait-for.sh pi "$PANE" --timeout 3600        # reads as "wait-for pi"
+```
+
+The one you reach for most. First arg is the **agent preset** — `pi`, `codex`,
+`claude`, or `any` (the union, safe when you are not sure which CLI is in the
+pane). It looks up that CLI's busy marker (see the table below) and waits for
+it to vanish — a thin wrapper over `wait-for-text.sh --gone`. `--timeout` /
+`--stable` / `--interval` / `--quiet` pass through.
 
 ---
 
-## Pattern 2 — AI Subagent Worker
+## Worked example — driving Pi (from the real run)
 
-Spawn an agent CLI process in a pane, give it a task, and read the result.
-`spawn_agent.sh` handles the full lifecycle. Use `--agent-cmd` to select the agent
-(defaults to `claude -p`). Prompts are passed via a `mktemp` file — no quoting hell.
-The output file is also `mktemp`-generated unless you supply `--out`.
+This is the actual shape that drove an overnight implementation. Lightly
+trimmed; the briefs were longer.
 
 ```bash
-# Simple — auto-generates a unique output file, prints its path to stdout
-OUTFILE=$(scripts/spawn_agent.sh --prompt "Summarize foo.txt")
-cat "$OUTFILE"
+# 1. LAUNCH — Pi, its own named window, rooted in the worktree
+PANE=$(scripts/launch-agent.sh --cmd pi \
+  --dir ~/Symph/symph-aria/.worktrees/comment-to-transcript \
+  --name pi-comment)
 
-# With explicit output path and a different agent
-scripts/spawn_agent.sh \
-  --prompt "Explain this diff: $(git diff HEAD~1)" \
-  --out /tmp/my-review.txt \
-  --agent-cmd "codex" \
-  --timeout 120
-cat /tmp/my-review.txt
+# 2. BRIEF — the long brief goes in a FILE (Write tool); the pane gets a
+#    one-liner pointing at it. Brief at intent, not diff (see below).
+scripts/send-keys-then-enter.sh "$PANE" \
+  'Read /tmp/pi-comment-brief.md in full and implement it. You are in the git worktree on branch feat/comment-to-transcript. Investigate the current handling before writing code. Commit when done. Do NOT push or deploy.'
+
+# 3. BLOCK until Pi goes idle.
+#    On Claude Code: run THIS LINE as the Monitor tool's command, so the
+#    blocking wait does not sit in your context window.
+scripts/wait-for.sh pi "$PANE" --timeout 3600
+
+# 4. READ BACK — scrollback (-S), blank lines stripped
+tmux capture-pane -p -S -200 -t "$PANE" | grep -v '^[[:space:]]*$' | tail -90
+
+# 5. FOLLOW UP — next brief into the SAME window; Pi keeps full context
+scripts/send-keys-then-enter.sh "$PANE" \
+  'Codex reviewed it — verdict SHIP WITH FIXES. Read /tmp/pi-fixes.md and implement the fix round. Commit when done.'
+scripts/wait-for.sh pi "$PANE" --timeout 1800
+
+# ... loop 3→5 for every round ...
+
+# 6. CLEANUP — only when the whole collaboration is done
+tmux kill-window -t "$PANE"
 ```
 
-**Important:** The agent is instructed in the prompt to write its final answer to the output
-file. Don't rely solely on `capture-pane` for long outputs — the buffer truncates.
-Each run gets a unique file via `mktemp`, so parallel calls never collide.
+To **steer mid-task**, you do not wait for idle — you send into the pane while
+the agent is still working, exactly as the human would by typing into the
+window: `scripts/send-keys-then-enter.sh "$PANE" 'Stop — the schema changed, revert that last edit.'`
 
 ---
 
-## Pattern 3 — Parallel Fan-out
+## Blocking properly
 
-Spawn N workers at once, await all, then collect.
+### Busy markers — how "idle" is detected
 
-```bash
-PANES=()
-for i in 1 2 3; do
-  P=$(tmux split-window -h -d -P -F "#{pane_id}")
-  tmux send-keys -t "$P" "do-work-$i > /tmp/result-$i.txt 2>&1" Enter
-  PANES+=("$P")
-done
+An interactive agent shows a **busy marker** in its status line while it
+processes a turn. Idle = that marker is absent. `wait-for.sh` knows these:
 
-# Await all
-for P in "${PANES[@]}"; do
-  scripts/poll_pane_done.sh "$P"
-done
+| Agent CLI | Busy marker (regex) | Verified |
+|---|---|---|
+| Pi | `Working\.\.\.` | yes — real sessions |
+| Codex | `esc to interrupt` (turn) · `Waiting for background terminal` (sub-command) | yes |
+| Claude | `…\s*\([^)]*[0-9]+s` — gerund-ellipsis + live timer | yes — probed |
+| *(any)* | `Working\.\.\.|esc to interrupt|Waiting for background terminal|Auto-compacting|…\s*\([^)]*[0-9]+s` | default |
+| Gemini | **not verified** | capture-pane it once mid-turn, read the marker, pass it to `wait-for-text.sh --gone` explicitly |
 
-# Collect
-for i in 1 2 3; do
-  echo "=== result $i ===" && cat /tmp/result-$i.txt
-done
+Markers are **distinctive** where the CLI allows — bare `Working` is avoided
+(it would false-match the agent's own prose, "Working on the fix…", and the
+pane would never read as idle). Pi and Codex have stable keywords; Codex shows
+its marker inside `Working (1s • esc to interrupt)`.
 
-# Cleanup
-for P in "${PANES[@]}"; do
-  tmux kill-pane -t "$P"
-done
-```
+**Claude Code has no stable keyword.** Its working line is an animated glyph +
+a *random* gerund + a live timer — `✻ Schlepping… (13s · ↑ 374 tokens)`,
+`· Meandering… (0s)` — with no fixed word and no "esc to interrupt". It is
+matched heuristically: a gerund-ellipsis `…` followed by a parenthesised
+elapsed time. Its idle line, `✻ Cogitated for Xs`, has no `… (`, so busy and
+idle separate cleanly. This is the one marker that is a heuristic, not a
+keyword — if it ever misbehaves, capture the pane and look.
 
----
+If a CLI changes its status text in an update, these regexes are the one thing
+to re-check — they live in `wait-for.sh` and `send-keys-then-enter.sh`.
 
-## Polling — How to Know a Pane is Done
+### Debounce — why `--stable`
 
-Use `scripts/poll_pane_done.sh`. It works by watching for the shell prompt to reappear after the last command line — a reliable signal that the foreground process exited.
+A single capture can catch the pane mid-redraw and momentarily miss a marker
+that is really still there. `--stable N` (default 2) requires the idle
+condition to hold for N consecutive polls before the wait returns, so one bad
+frame cannot declare the agent done early.
 
-Two strategies (the script uses both):
+### Run the wait asynchronously, not inline
 
-1. **Prompt sentinel**: check `capture-pane` for a prompt string (`$`, `❯`, `➜`) appearing after the command line.
-2. **PID watch**: read the pane's foreground PID via `tmux display-message -p -t $PANE "#{pane_pid}"`, then check if child processes of that PID are gone.
+`wait-for.sh` is a blocking loop — never run it inline, it burns context for
+nothing. Run it **asynchronously** so it waits outside your context and
+notifies you when the agent goes idle: on **Claude Code**, hand the
+`wait-for.sh …` invocation to the **Monitor tool**; on **Pi**, to its async
+monitor tooling (a Pi extension modelled on Claude's Monitor). On an agent with
+neither (Codex, Gemini), run it as a blocking background job and check its exit
+code.
 
-For claude subagents, strategy 1 is more robust since the CLI spawns multiple child processes.
+**While blocked, do real parallel work** — the other side of the task — instead
+of emitting "still waiting" turns. Fall back to a pure wait only when there is
+genuinely no independent work left.
 
----
+### Continuous watch (long-lived agent)
 
-## Scripts
-
-- `scripts/poll_pane_done.sh` — polls a pane until its shell prompt returns; exits 0 on done, 1 on timeout.
-- `scripts/spawn_agent.sh` — full spawn-send-poll-read-cleanup cycle for a single subagent. Accepts `--agent-cmd` to select the agent binary; defaults to `claude -p`. Uses `mktemp` for both prompt and output files — no collisions.
-- `scripts/fanout.sh` — parallel fan-out over N tasks, one pane each. Also accepts `--agent-cmd`.
-
----
-
-## Pattern 4 — Visible AI Subagent (User Watches Live)
-
-When the user wants to SEE the agent working in the pane (not just collect results), do NOT
-use `spawn_agent.sh` (it redirects stdout to a file, making the pane blank). Instead, manually
-spawn the pane and use `tee` so output goes to both the terminal AND a file:
-
-```bash
-# Write prompt to a temp file to avoid quoting issues
-cat > /tmp/agent-prompt.txt << 'EOF'
-Your prompt here...
-EOF
-
-# Spawn pane — output is VISIBLE and saved to file
-OUTFILE=/tmp/agent-result.txt
-PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
-tmux send-keys -t "$PANE" \
-  "codex exec --full-auto \"\$(cat /tmp/agent-prompt.txt)\" 2>&1 | tee '$OUTFILE'; echo '===DONE===' >> '$OUTFILE'" Enter
-```
-
-**Key difference from Pattern 2:** `tee` replaces `>` so the user sees streaming output live.
-Poll and read back the same way — check for `===DONE===` sentinel in the output file.
-
-### Agent-specific commands
-
-| Agent | Headless (non-interactive) | Flags |
-|-------|---------------------------|-------|
-| Claude | `claude -p "prompt"` | `--dangerously-skip-permissions` if aliased |
-| Codex | `codex exec "prompt"` | `--full-auto` for sandboxed auto-approval |
-| Gemini | `gemini -p "prompt"` | `--yolo` for auto-approval |
-
-**Note:** When spawning Claude as a subagent from Claude, the inner Claude has no shared
-context. You're just asking yourself the same question twice. Prefer Codex or Gemini for
-genuine second opinions.
-
----
-
-## Pattern 5 — Resume a Previous Subagent Session
-
-Both Codex and Gemini persist sessions and support resuming with follow-up questions.
-This lets you ask follow-ups without re-sending the full context.
-
-**Always resume by explicit session ID, not `--last`.** If multiple agents are spawning
-Codex/Gemini sessions concurrently, `--last` creates a race condition — you might
-resume the wrong session.
-
-### Gemini
+`wait-for.sh` is a *one-shot* block — it returns the first time the agent
+goes idle. To watch an agent across a long session and get notified on every
+state change, use an **edge-triggered** loop (run it under the Monitor tool):
 
 ```bash
-# List saved sessions — note the UUID
-gemini --list-sessions
-# Output: 1. Your prompt here... (1 hour ago) [bff0d69a-c59a-4bf7-8524-6655fc297e64]
-
-# Resume by UUID with a follow-up, visible in pane
-PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
-tmux send-keys -t "$PANE" \
-  "gemini --resume bff0d69a-c59a-4bf7-8524-6655fc297e64 -p 'Your follow-up' --yolo 2>&1 | tee /tmp/gemini-followup.txt" Enter
-```
-
-### Codex
-
-```bash
-# Session IDs are UUIDs embedded in filenames under ~/.codex/sessions/YYYY/MM/DD/
-# e.g. rollout-2026-04-01T14-00-36-019d47a1-24ef-7232-9600-1c3392bbdd41.jsonl
-# The UUID is everything after the timestamp: 019d47a1-24ef-7232-9600-1c3392bbdd41
-
-# Resume by session UUID with a follow-up
-PANE=$(tmux split-window -h -d -P -F "#{pane_id}")
-tmux send-keys -t "$PANE" \
-  "codex exec resume '019d47a1-24ef-7232-9600-1c3392bbdd41' --full-auto 'Your follow-up' 2>&1 | tee /tmp/codex-followup.txt" Enter
-```
-
-### Capturing session ID at spawn time
-
-To make resume reliable, capture the session ID when you first spawn the agent.
-For Codex, extract it from the session file created during the run:
-
-```bash
-# After Codex finishes, find the session file it just wrote
-CODEX_SESSION=$(ls -t ~/.codex/sessions/$(date +%Y/%m/%d)/ | head -1 | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-echo "Codex session: $CODEX_SESSION"
-```
-
-For Gemini, the UUID is shown in `--list-sessions` output.
-
-**Important:** Headless sessions (`codex exec`, `gemini -p`) DO save session history and
-are resumable. You don't need to have run them interactively first.
-
----
-
-## Pattern 6 — Persistent Interactive Peer Agent ★ preferred for sustained collaboration
-
-Patterns 2 / 4 / 5 spawn a *headless* agent (`codex exec`, `claude -p`) for a
-one-shot job. When a peer agent instead **owns a workstream** — many briefs and
-follow-ups across a long session (e.g. Codex implementing a service's backend
-while you build the frontend) — run it as a **persistent interactive REPL in a
-tmux pane** instead. This is the **preferred** shape for sustained collaboration.
-
-**Why preferred:**
-
-- The pane is **inspectable** — the user watches the peer work live.
-- The pane is **interjectable** — the user can *type into the same pane* as a
-  third party, to steer or correct the peer mid-task. A headless `codex exec`
-  is a black box; nobody can see or touch it.
-- The REPL **keeps full context** across every follow-up — no `codex exec
-  resume` / session-ID juggling (Pattern 5). Just send the next task.
-
-(`codex exec` / Patterns 2 & 4 are still right for a genuine *one-shot*
-consultation — a review, a single question. Pattern 6 is for an ongoing peer.)
-
-### Spawn — interactive, NOT `exec`
-
-```bash
-CODEX_PANE=$(tmux split-window -h -d -P -F '#{pane_id}')
-tmux send-keys -t "$CODEX_PANE" \
-  'codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.5 -c model_reasoning_effort=high -C /abs/path/to/repo "Read /tmp/brief.md and begin."' Enter
-```
-
-| Flag | Why |
-|---|---|
-| *(no `exec`)* | Bare `codex` is the interactive TUI — the whole point. `codex exec` is headless. |
-| `--no-alt-screen` | **Mandatory.** Otherwise the TUI uses the alternate screen, where `capture-pane` sees only the current viewport — no scrollback. Inline mode keeps history readable. |
-| `--dangerously-bypass-approvals-and-sandbox` | Peer-engineer model — no per-action approval prompts (the host machine is the sandbox). The user can still interject by typing. |
-| `-C /abs/path` | Roots the agent in the target repo. |
-| `[PROMPT]` positional | A short single-line kickoff. Long briefs go in a file (below). |
-
-First run shows a **"Do you trust the contents of this directory?"** prompt —
-`tmux send-keys -t "$CODEX_PANE" Enter` once to confirm.
-
-### Brief via a file, drive via send-keys
-
-Long multi-line briefs sent through `send-keys` into a TUI are fragile —
-embedded newlines submit the message early. Write the brief to a file (Write
-tool) and `send-keys` a one-liner pointing at it:
-
-```bash
-tmux send-keys -t "$CODEX_PANE" 'Read /tmp/codex-<topic>.md in full and implement it. Commit when done.' Enter
-```
-
-**Submit quirk:** `send-keys … Enter` sometimes leaves the text sitting in the
-`›` input box unsent. Capture the pane; if the message is still in the input,
-send a second bare `Enter`. Follow-up tasks: `send-keys` the next instruction
-into the **same pane** — context persists. Brief at intent level (see the
-`consulting-other-agents` skill) — the peer is a peer, not a typist.
-
-### Blocking on the peer — poll for IDLE
-
-An interactive REPL process **never exits**, so `tail --pid` and
-`poll_pane_done.sh` (which wait for a shell prompt) do **not** work here. Block
-by polling the pane for the peer's idle state.
-
-Codex's TUI shows `• Working (Xs • esc to interrupt)` while processing a turn,
-and `• Waiting for background terminal` while a sub-command runs. **Idle =
-neither marker present.**
-
-Run this with the Bash tool's `run_in_background: true` — it exits when the peer
-goes idle, giving you exactly one completion notification:
-
-```bash
-for i in $(seq 1 240); do
-  cap=$(tmux capture-pane -p -t "$CODEX_PANE" 2>/dev/null) || { echo PANE_GONE; break; }
-  grep -qE 'Working \(|Waiting for' <<<"$cap" || { echo "CODEX_IDLE after ~$((i*10))s"; break; }
+prev=unknown; cand=unknown; hold=0
+while true; do
+  cap=$(tmux capture-pane -p -t "$PANE" 2>/dev/null) || { echo "$PANE -> PANE GONE $(date +%H:%M:%S)"; exit 1; }
+  if grep -qE 'Working\.\.\.|esc to interrupt|Waiting for background terminal|Auto-compacting|…\s*\([^)]*[0-9]+s' <<<"$cap"; then
+    now=working; else now=idle; fi
+  if [ "$now" = "$cand" ]; then hold=$((hold+1)); else cand=$now; hold=1; fi
+  # debounce: a new state must hold 2 consecutive polls before it counts
+  if [ "$hold" -ge 2 ] && [ "$cand" != "$prev" ]; then
+    echo "$PANE -> $cand  $(date +%H:%M:%S)"; prev=$cand
+  fi
   sleep 10
 done
-echo '=== codex pane ==='
-tmux capture-pane -p -S -120 -t "$CODEX_PANE" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -45
 ```
 
-Then read the peer's final report from the pane scrollback, or the committed
-result directly (`git log`). **While blocked, do real parallel work** — the
-non-peer side of the task — rather than emitting "still working" status turns;
-fall back to a pure blocking wait only when no independent work remains.
+**The `hold >= 2` debounce is not optional** — it is the same discipline as
+`wait-for.sh --stable`. An agent dips out of `Working...` for a single poll all
+the time — between a shell sub-command finishing and its next step starting.
+That is a FALSE idle. Un-debounced, this loop wakes you on every blip and you
+burn a turn capturing a pane that is still working. Debounced, a state must
+survive two polls (~20s) to fire.
 
-### Cleanup
-
-A persistent peer pane is *intentionally* long-lived — **do not kill it between
-tasks**; that destroys the context that makes it valuable. Kill it only when the
-whole collaboration is over.
+For the Execution agent you supervise across a whole change, this continuous
+watch — not the one-shot `wait-for.sh` — is your default: one standing Monitor
+for the life of the collaboration. One gotcha: if Execution runs its own
+monitor on *your* pane, `capture-pane` of *its* pane can show your content
+reflected back — two agents watching each other is fine, just don't misread
+the mirror.
 
 ---
 
-## Rules & Discipline
+## The submit quirk
 
-- **Always clean up panes.** Kill every pane you spawn. Leaked panes accumulate.
-- **Always `tee` to a file.** Never use bare `>` redirect — it hides output from the user. Use `2>&1 | tee /tmp/file.txt` so output streams to both the pane (visible) and the file (readable by you).
-- **Don't ask subagents to write to /tmp files for reviews/verdicts.** The `tee` approach pollutes the output file with terminal artifacts (tool output, shell commands, hex dumps). Instead, let the subagent emit its response naturally to the pane, then use `tmux capture-pane -p -S - -t "$PANE"` and `grep -A` on a known marker (e.g. "## Review", "Verdict", "Findings") to extract the content from scrollback. This is more reliable than fighting file corruption. Reserve `/tmp` write targets for structured data the subagent generates programmatically, not prose.
-- **Don't poll tightly.** Use `sleep 2` between capture-pane checks. CPU waste and noise if you spin hot.
-- **One task per pane.** Don't reuse a pane for multiple sequential tasks. Spawn fresh, kill when done. *(Exception: a persistent peer-agent pane — Pattern 6 — is deliberately reused across many tasks and kept alive for the whole collaboration.)*
-- **Keep prompts self-contained.** A subagent in a pane has no shared context with your session. Pass everything it needs in the prompt string.
-- **Timeout everything.** `poll_pane_done.sh` accepts a `--timeout` arg. Always set one. Hung agents must not block forever.
-- **Prefer `tee` over `spawn_agent.sh` when the user is watching.** `spawn_agent.sh` redirects stdout to a file, making the pane appear blank. Only use it for fire-and-forget background work where the user doesn't need to see progress.
-- **Always resume existing sessions for follow-up work.** If you previously spawned a subagent (e.g. Codex for code review) and now need to send it related follow-up work (e.g. "review the fixes for the issues you flagged"), ALWAYS resume the existing session instead of spawning a fresh one. The subagent already has the full conversation context — a cold start loses that and forces re-reading everything. Capture the session ID when you first spawn it, and use `codex exec resume '<id>'` / `gemini --resume <id>` for follow-ups. This is not optional — if there's a natural prior session to continue, continue it.
+Sending a prompt into a TUI input box and pressing Enter does not always
+submit it — the text can sit unsent in the `›` box. `send-keys-then-enter.sh`
+handles this for you: after sending, it captures the pane, and if the agent did
+**not** start working, it sends a second bare `Enter` to push the message
+through. If you ever drive a pane by hand with raw `tmux send-keys`, remember
+this — capture the pane and send a bare `Enter` if the message is still parked.
+
+If the pane shows an **error** instead of a parked message — e.g. a Codex/Pi
+`previous_response_not_found` session error — the message did not land because
+the agent's turn failed, not because Enter was missed. Recovery: `tmux
+send-keys -t "$PANE" Up` recalls your last input into the box, then a separate
+`Enter` resubmits it. That clears most transient agent-session errors without
+retyping the brief.
+
+---
+
+## Briefing discipline
+
+- **Long briefs go in a file.** Multi-line text sent through `send-keys`
+  submits early on the first embedded newline. Write the brief with the Write
+  tool to `/tmp/<topic>.md`, then `send-keys-then-enter.sh` a one-liner:
+  `'Read /tmp/<topic>.md in full and …'`.
+- **Brief at intent, not diff.** The agent in the pane is a peer engineer, not
+  a typist. State what to achieve and why; let it decide how. Load the
+  `consulting-other-agents` skill before you write the brief — it details the
+  failure modes (leading the witness, muzzling the peer, smuggling unverified
+  claims) that waste the collaboration.
+- **The pane has no shared context with you.** Everything the agent needs goes
+  in the brief or the brief file.
+
+### Launching specific agent CLIs
+
+What to pass as `launch-agent.sh --cmd`:
+
+| Agent | `--cmd` value |
+|---|---|
+| Pi | `pi` |
+| Codex | `codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.5 -c model_reasoning_effort=high` |
+| Claude | `claude` |
+
+`--no-alt-screen` for Codex is **important**: without it the TUI uses the
+alternate screen and `capture-pane` sees only the current viewport — no
+scrollback to read back. Some agents show a first-run "trust this directory?"
+prompt; clear it with one `tmux send-keys -t "$PANE" Enter`.
+
+---
+
+## Rules & discipline
+
+- **The window is shared — name it well.** `--name pi-gw-impl`, not `agent`.
+  The human finds and joins the agent by window name.
+- **One agent per window, reused across that agent's tasks.** An interactive
+  REPL keeps context — that is its value. Send follow-ups into the same window;
+  do not spawn a fresh one per task.
+- **Do not kill the window between tasks.** A persistent peer window is
+  *intentionally* long-lived. Killing it destroys the context that makes it
+  worth running interactively. Kill it only when the whole collaboration ends.
+- **Read back from scrollback, not just the viewport.** `tmux capture-pane -p
+  -S -200 -t "$PANE"` — the agent's output scrolls past the visible area.
+- **Timeout every wait.** `wait-for.sh <agent> <pane> --timeout N`. A hung
+  agent must not block forever.
+- **Clean up panes you spawned for throwaway work.** Persistent agent windows
+  are the exception; everything else gets killed when done.
+
+---
+
+## Appendix — non-interactive workers
+
+The interactive pattern above is the default. These non-interactive shapes
+still have narrow uses.
+
+### Shell worker — a long command in a background pane
+
+Run a long build/test in a pane, poll until the **shell prompt returns**
+(process exited), read the output:
+
+```bash
+PANE=$(tmux split-window -h -d -P -F '#{pane_id}')
+tmux send-keys -t "$PANE" 'long-build 2>&1 | tee /tmp/build.txt' Enter
+scripts/poll_pane_done.sh "$PANE" --timeout 600   # waits for the shell prompt
+cat /tmp/build.txt
+tmux kill-pane -t "$PANE"
+```
+
+`poll_pane_done.sh` watches for the prompt to reappear — correct for a shell
+command, **wrong for an interactive agent** (whose REPL never returns a
+prompt). For agents, use `wait-for.sh`.
+
+### Headless one-shot agent
+
+A single fire-and-forget agent call — one review, one question, no follow-ups
+— does not need a pane at all. That is `codex exec` / `claude -p`, and the
+canonical invocations live in the **`consulting-other-agents`** skill. Use that,
+not a pane, for one-shots.

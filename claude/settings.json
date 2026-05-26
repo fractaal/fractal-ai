@@ -14,6 +14,7 @@
     ],
     "defaultMode": "bypassPermissions"
   },
+  "model": "claude-opus-4-6[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -84,15 +85,17 @@
     "skill-creator@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
+  "promptSuggestionEnabled": false,
   "voice": {
     "enabled": true,
     "mode": "hold"
   },
   "skipDangerousModePermissionPrompt": true,
-  "skipAutoPermissionPrompt": true,
   "theme": "dark",
-  "verbose": true,
+  "verbose": false,
   "teammateMode": "tmux",
   "remoteControlAtStartup": true,
-  "voiceEnabled": true
+  "skipAutoPermissionPrompt": true,
+  "voiceEnabled": true,
+  "tui": "fullscreen"
 }

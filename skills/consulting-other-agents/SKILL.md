@@ -2,23 +2,23 @@
 name: consulting-other-agents
 description: >-
   INVOKE/LOAD BEFORE asking another AI agent for an opinion, second pass, or
-  cross-check — Codex CLI, a peer Claude via tmux, Gemini, sgpt, etc. Four
-  failure modes this skill exists to prevent: (1) piping the agent's stdout
-  through `tail`/`head` so the response never appears because buffering,
-  (2) framing the query in a way that confirms your premise instead of
-  inviting disagreement, (3) briefing the peer at the diff/line level so
-  it just executes your pre-decided solution instead of applying its own
-  judgment, and (4) — as the agent being briefed — taking the briefer's
-  claims about the codebase as fact instead of verifying them. Each one
-  wastes the consultation.
-  Keyword triggers: "ask codex", "consult codex", "second opinion", "cross-check
-  with codex", "spawn a peer agent", "have gemini check", "what does codex
-  think", "bring up codex", "invoke another agent".
+  cross-check — Pi (GPT-5.x, preferred for backend / correctness), a peer
+  Claude via tmux, Gemini, sgpt, etc. Four failure modes this skill exists
+  to prevent: (1) piping the agent's stdout through `tail`/`head` so the
+  response never appears because buffering, (2) framing the query in a way
+  that confirms your premise instead of inviting disagreement, (3) briefing
+  the peer at the diff/line level so it just executes your pre-decided
+  solution instead of applying its own judgment, and (4) — as the agent
+  being briefed — taking the briefer's claims about the codebase as fact
+  instead of verifying them. Each one wastes the consultation.
+  Keyword triggers: "ask pi", "consult pi", "second opinion", "cross-check",
+  "spawn a peer agent", "have gemini check", "what does pi think",
+  "invoke another agent".
 ---
 
 # Consulting Other Agents
 
-You are about to ask Codex, a peer Claude, Gemini, or another agent CLI for
+You are about to ask Pi, a peer Claude, Gemini, or another agent CLI for
 input — a code review, a doc lookup, a cross-check on a tricky semantic, a
 second opinion before shipping. This skill prevents the specific ways you
 keep wasting that consultation.
@@ -29,7 +29,26 @@ These are the patterns that have actually worked in past sessions. Improvising
 on flags or quoting has burned real time on this codebase. **When in doubt,
 copy one of these exactly and substitute only the prompt-file path.**
 
-### `codex exec` — Codex CLI (preferred for backend / correctness questions)
+### `pi` — Pi CLI (GPT-5.x; THE default for backend / correctness consultations)
+
+Pi runs GPT-5.5 and is the go-to for backend, correctness, and code-review consultations. **Always use Pi over Codex** — they're the same model family, but Pi is more reliable in practice (reads shared instruction files, no auth flakiness, better interactive workflow).
+
+Pi is interactive REPL only — no headless `pi exec`. Drive it via the `tmux-workers` skill (load that before invoking):
+
+```bash
+PANE=$(~/.claude/skills/tmux-workers/scripts/launch-agent.sh --cmd pi \
+  --dir <workdir> --name pi-<task>)
+~/.claude/skills/tmux-workers/scripts/send-keys-then-enter.sh "$PANE" \
+  'Read /tmp/<brief>.md in full and report back.'
+# Block via Monitor tool (Claude Code) — never inline wait-for.sh, it burns
+# your context. Capture the pane scrollback when Pi goes idle.
+```
+
+Same brief discipline applies as for all agents — brief in a file (send-keys submits on first newline), intent-level not diff-level, no leading questions, mark codebase claims as beliefs not facts. The four failure modes below apply identically to Pi.
+
+### `codex exec` — Codex CLI (DEPRECATED — use Pi instead)
+
+> **Don't bother with Codex.** Pi and Codex are both GPT-5.x — same model family, same strengths. Pi is strictly better in this environment: it reads shared instruction files, has no auth issues, and works interactively via tmux. The section below is kept only as reference if Pi is somehow unavailable.
 
 ```bash
 # Write your prompt to a file FIRST, then invoke.
@@ -88,8 +107,9 @@ claude -p "$(cat /tmp/prompt.md)" --dangerously-skip-permissions > /tmp/claude.o
 
 `claude -p` accepts the prompt as a positional arg cleanly because the
 CLI shells out internally; `--dangerously-skip-permissions` is required
-unless you've aliased it. For long sessions, prefer `tmux-workers`'
-`spawn_agent.sh`.
+unless you've aliased it. For a sustained peer — many briefs across one
+session — run it interactively via the `tmux-workers` skill rather than
+repeated one-shots.
 
 ### Resuming a Codex session
 
@@ -154,9 +174,9 @@ grep -A20 'Recommendation' /tmp/codex.out
 ```
 
 **D) For long-running, parallel, or fully-interactive consultations**,
-use the `tmux-workers` skill instead — it handles the pane lifecycle, has
-a `spawn_agent.sh` helper that uses `tee` correctly, and supports
-session-ID resume.
+use the `tmux-workers` skill instead — it handles the full interactive
+pane lifecycle: launch the agent CLI, brief it, block until it goes idle,
+read it back, and steer it mid-task.
 
 ### Failure 2 — leading the witness
 
@@ -217,6 +237,35 @@ Before I ship: please challenge the framing as well as the fix. Specifically:
 If the premise is wrong, say so plainly. I'd rather scrap and restart
 than ship a fix to the wrong thing.
 ```
+
+**This is not only about big "(a)/(b)/(c)" decisions — it bites hardest on
+small factual questions, where it is easiest to miss.** A specific
+*question* is fine — "what does the perm path do in prod? trace it"; the
+agent still has to go find out, you don't know the answer. A specific
+*answer*, handed back as a menu, is leading — the real slip from this very
+codebase: "did the real Discord permission check actually run in prod, OR
+has `channelAuthorized` only ever defaulted to true?" The "OR … defaulted
+true" is *your hypothesis* — smuggled in as one of two options, and if
+reality is a third thing the agent is primed straight past it.
+
+**The rule: if your hypothesis is in the question, you crossed the line. If
+only the thing-to-find-out is in the question, you didn't.** A question the
+agent answers by *producing the actual content* is open; one it answers
+"yes, confirmed / no" is you outsourcing a verdict on analysis you already
+did. The far end: "does `X` flip to 6 under `os.time() % 231.21`?"
+— you have done 100% of the analysis; the agent is now a calculator for your
+theory, zero judgement added.
+
+If there is a real subtlety the agent would be fooled by without it — e.g.
+"a log line `channel_authorized: true` can mean *defaulted on a web
+channel*, not *checked*" — give it as **context** ("here is how the code
+works"), which arms the agent, never as **the question** ("is it the
+defaulted case?"), which leads it. Same fact: context arms, question-shape
+leads.
+
+And watch the **compression step**: a clean, open brief still gets squashed
+into a leading one-liner when you summarise it for the actual send. The
+one-liner is where the leading sneaks back in. Check it there too.
 
 ### Failure 3 — muzzling the peer
 
@@ -319,6 +368,14 @@ tells the recipient what to check. "The ingress is the web adapter"
 launders an assumption into a fact and propagates your blind spot straight
 into their work.
 
+**The same trap, as a question.** A brief also smuggles beliefs in as
+*leading questions* — "is it A or B?" where A and B are the briefer's two
+hypotheses. Answer the question they *should* have asked, not the one they
+did: go find what the thing actually is, even when all you were handed was
+their two-item menu. If the real answer is "neither — it's C," that is the
+answer — and C is exactly what the leading question was shaped to hide. The
+menu is a lead, not a fence.
+
 ## When to consult other agents at all
 
 Cross-agent consultation has a real cost (tokens, latency, your attention).
@@ -350,7 +407,7 @@ shape of the question — not the one you happen to already be running in.
 
 | Agent | Strong at | Weaker at |
 |---|---|---|
-| Codex CLI (`codex exec`) | Backend implementation, code-level correctness, mechanical rigor, standards enforcement, doc lookups (broadly — including but not limited to the OpenAI/Codex domain) | Frontend design, taste-driven UI work, conversational/social nuance, brand/voice feel |
+| Pi (interactive via `tmux-workers`) | Backend implementation, code-level correctness, mechanical rigor, standards enforcement. GPT-5.x. **The default for all non-Claude consultations** | Frontend design, taste-driven UI work, conversational/social nuance, brand/voice feel |
 | Claude (any model, via `claude -p` or in-session) | Frontend design, taste, system thinking, drafting communication / writing for humans, ideation, architectural sketching | Mechanical code-implementation correctness — confidently missing a subtle wiring or off-by-one is the recurring failure mode |
 | Gemini (`gemini -p`) | Fast, cheap, broad second opinions | Depth on niche systems or long-context reasoning |
 | sgpt | One-shot CLI scratch | Anything sustained or multi-step |
@@ -358,14 +415,15 @@ shape of the question — not the one you happen to already be running in.
 **Pairing principle:** the *strength* shape of the task picks the
 *drafter*. The *opposite* shape picks the *reviewer*. So:
 
-- Backend code drafted by Codex → reviewed by Claude only when the
-  question is taste-shaped (e.g. naming, comment quality, user-facing
-  copy embedded in code). For correctness review, prefer a peer Codex
-  or an independent Claude with a code-review skill loaded.
+- Backend code drafted by Pi → reviewed by Claude only when the question
+  is taste-shaped (e.g. naming, comment quality, user-facing copy embedded
+  in code). For correctness review, prefer a peer Pi. An independent Claude
+  with a code-review skill loaded is a distant second — use it only when Pi
+  is unavailable.
 - Frontend / UI / copy / conversational behavior drafted by Claude →
-  reviewed by Codex only when the question is correctness-shaped (does
-  this state machine cover all transitions? does this event handler
-  leak?). For taste review, prefer a peer Claude or human eyes.
+  reviewed by Pi when the question is correctness-shaped (does this state
+  machine cover all transitions? does this event handler leak?). For taste
+  review, prefer a peer Claude or human eyes.
 
 The *wrong* direction is the weaker agent reviewing the stronger
 agent's strength zone with no shape-flip. That review will produce
@@ -380,7 +438,7 @@ than half-do it and then ask for confirmation.
 
 ## Checklist before invoking
 
-Before you hit Enter on a `codex exec` (or equivalent), confirm:
+Before you launch a Pi worker, invoke `claude -p`, or any equivalent, confirm:
 
 - [ ] **Output capture is sane.** Either `run_in_background=true` (Bash
       tool will write to a file you can read), or `tee /tmp/x.out`, or
