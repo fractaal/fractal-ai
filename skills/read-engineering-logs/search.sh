@@ -48,8 +48,13 @@ fi
 qmd update >&2
 qmd embed  >&2
 
+collections=(-c scratchpads)
+if qmd collection list 2>/dev/null | grep -q "^sessions "; then
+  collections+=(-c sessions)
+fi
+
 if [[ "$lean" == true ]]; then
-  exec qmd query "$query" --no-rerank -C 20 --md -c scratchpads "${args[@]}"
+  exec qmd query "$query" --no-rerank -C 20 --md "${collections[@]}" "${args[@]}"
 else
-  exec qmd query "$query" --md -c scratchpads "${args[@]}"
+  exec qmd query "$query" --md "${collections[@]}" "${args[@]}"
 fi
