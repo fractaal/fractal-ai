@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/require-clean-tree.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

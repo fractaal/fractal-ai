@@ -6,3 +6,6 @@ __pycache__/
 
 # Codex-managed system skills — regenerated on sync, not hand-curated.
 skills/.system/
+
+# Per-machine Claude Code overrides at the project level — not source-of-truth.
+.claude/settings.local.json
