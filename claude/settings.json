@@ -14,7 +14,6 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "model": "claude-opus-4-6[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -111,6 +110,7 @@
   },
   "effortLevel": "xhigh",
   "promptSuggestionEnabled": false,
+  "tui": "fullscreen",
   "voice": {
     "enabled": true,
     "mode": "hold"
@@ -121,6 +121,5 @@
   "teammateMode": "tmux",
   "remoteControlAtStartup": true,
   "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true,
-  "tui": "fullscreen"
+  "voiceEnabled": true
 }
