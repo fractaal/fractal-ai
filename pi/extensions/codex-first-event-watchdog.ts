@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 const DEFAULT_FIRST_EVENT_TIMEOUT_MS = 15_000;
-const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_MAX_ATTEMPTS = 999;
 
 class FirstEventTimeoutError extends Error {
 	constructor(attempt: number, timeoutMs: number) {

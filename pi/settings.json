@@ -7,13 +7,6 @@
   "followUpMode": "all",
   "transport": "auto",
   "hideThinkingBlock": false,
-  "retry": {
-    "enabled": true,
-    "maxRetries": 999,
-    "provider": {
-      "maxRetries": 999
-    }
-  },
   "packages": [
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a"
   ]
