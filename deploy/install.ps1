@@ -46,6 +46,30 @@ function Link-FractalItem {
     }
 }
 
+function Remove-LegacySkillLink {
+    param(
+        [string]$Target,
+        [string]$Source
+    )
+
+    if (-not (Test-Path -Path $Target -PathType Any)) { return }
+
+    $item = Get-Item -Path $Target -Force
+    $sharedTarget = Join-Path (Join-Path $HOME '.agents') 'skills'
+    if ($item.LinkType -eq 'SymbolicLink') {
+        $current = if ($null -eq $item.Target) { '' } else { ($item.Target -join '') }
+        if ($current -eq $Source -or $current -eq $sharedTarget) {
+            Write-Host "  cleanup: removing legacy skill symlink $Target"
+            Remove-Item -Path $Target
+            return
+        }
+        Write-Warning "leaving non-fractal legacy skill symlink $Target -> $current"
+        return
+    }
+
+    Write-Warning "leaving real legacy skill directory $Target; move it aside manually if it causes duplicates"
+}
+
 # Warn if ~/.claude/settings.local.json still contains keys that are now owned
 # by the canonical (user-global) settings.json. The previous layout rendered
 # `hooks` and `statusLine` into settings.local.json, but that file is cwd-
@@ -162,12 +186,17 @@ if (Test-Path -Path $deployedInstructionsSource -PathType Leaf) {
     Link-FractalItem -Source $deployedInstructionsSource -Target (Join-Path (Join-Path $HOME '.augment') 'AGENTS.md')
 }
 
-# Shared: deploy skills/ to every supported tool
+# Shared: deploy skills/ to supported skill roots
 if (Test-Path -Path $skillsSource -PathType Container) {
-    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.codex') 'skills')
+    # Codex Desktop and Pi both scan ~/.agents/skills. Installing the shared
+    # skills there avoids duplicate Pi skill entries from also scanning
+    # ~/.pi/agent/skills, and avoids duplicate Codex entries from ~/.codex/skills.
+    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.agents') 'skills')
+    Remove-LegacySkillLink -Target (Join-Path (Join-Path $HOME '.codex') 'skills') -Source $skillsSource
+    Remove-LegacySkillLink -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'skills') -Source $skillsSource
+
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.opencode') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.claude') 'skills')
-    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.gemini') 'skills')
     Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.augment') 'skills')
 }

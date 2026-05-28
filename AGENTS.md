@@ -15,7 +15,9 @@ Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/inst
 
 - `DEPLOYED-INSTRUCTIONS.md` — userwide playbook content. Distributed as `AGENTS.md` /
   `CLAUDE.md` into each tool's config dir.
-- `skills/` — tool-agnostic skills. Distributed to every supported tool's `skills/`.
+- `skills/` — tool-agnostic skills. Distributed to shared skill roots. Codex Desktop
+  and Pi both use `~/.agents/skills`, so do not also install them to
+  `~/.codex/skills` or `~/.pi/agent/skills`.
 - `claude/` — Claude Code-only artifacts (`settings.json`, `hooks/`, `statusline-command.sh`,
   `sync-agents.sh`). Distributed only into `~/.claude/`.
 - `pi/` — Pi-only artifacts (`settings.json`, `extensions/`, Pi-specific notes). Distributed

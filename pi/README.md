@@ -8,11 +8,13 @@ Deployed by `deploy/install.sh` / `install.ps1`:
 |---|---|
 | `pi/settings.json` | `~/.pi/agent/settings.json` |
 | `DEPLOYED-INSTRUCTIONS.md` | `~/.pi/agent/AGENTS.md` |
-| `skills/` | `~/.pi/agent/skills` |
+| `skills/` | `~/.agents/skills` (shared by Codex Desktop and Pi) |
 | `pi/extensions/` | `~/.pi/agent/extensions` |
 
 `auth.json`, sessions, npm/git package caches, and other mutable runtime state stay under
-`~/.pi/agent/` and are not tracked here.
+`~/.pi/agent/` and are not tracked here. Shared skills intentionally do not live under
+`~/.pi/agent/skills` anymore because Pi also scans `~/.agents/skills`; keeping both paths
+produces duplicate skill entries.
 
 ## Auto rename
 
