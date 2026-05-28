@@ -46,6 +46,57 @@ function Link-FractalItem {
     }
 }
 
+function Ensure-DirectoryTarget {
+    param([string]$Target)
+
+    if (Test-Path -Path $Target -PathType Any) {
+        $item = Get-Item -Path $Target -Force
+        if ($item.LinkType -eq 'SymbolicLink') {
+            Write-Host "  cleanup: replacing directory symlink $Target with a real directory"
+            Remove-Item -Path $Target
+        } elseif (-not $item.PSIsContainer) {
+            $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            $backup = "${Target}.bak-${timestamp}"
+            Write-Warning "  BACKUP: displacing non-directory $Target -> $backup (review before deleting)"
+            Move-Item -Path $Target -Destination $backup
+        }
+    }
+
+    if (-not (Test-Path -Path $Target -PathType Container)) {
+        New-Item -ItemType Directory -Path $Target -Force | Out-Null
+    }
+}
+
+function Link-DirectoryChildren {
+    param(
+        [string]$Source,
+        [string]$Target
+    )
+
+    Ensure-DirectoryTarget -Target $Target
+    Get-ChildItem -Path $Source -Force:$false | ForEach-Object {
+        Link-FractalItem -Source $_.FullName -Target (Join-Path $Target $_.Name)
+    }
+}
+
+function Restore-AgentsSystemSkills {
+    param([string]$Target)
+
+    if (Test-Path -Path (Join-Path $Target '.system') -PathType Any) { return }
+
+    $parent = Split-Path -Path $Target -Parent
+    $name = Split-Path -Path $Target -Leaf
+    $latest = Get-ChildItem -Path $parent -Directory -Filter "${name}.bak-*" -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -Path (Join-Path $_.FullName '.system') -PathType Container } |
+        Sort-Object -Property Name -Descending |
+        Select-Object -First 1
+
+    if ($null -eq $latest) { return }
+
+    Write-Host "  restore: copying Codex-managed system skills from $(Join-Path $latest.FullName '.system')"
+    Copy-Item -Path (Join-Path $latest.FullName '.system') -Destination (Join-Path $Target '.system') -Recurse
+}
+
 function Remove-LegacySkillLink {
     param(
         [string]$Target,
@@ -188,10 +239,12 @@ if (Test-Path -Path $deployedInstructionsSource -PathType Leaf) {
 
 # Shared: deploy skills/ to supported skill roots
 if (Test-Path -Path $skillsSource -PathType Container) {
-    # Codex Desktop and Pi both scan ~/.agents/skills. Installing the shared
-    # skills there avoids duplicate Pi skill entries from also scanning
-    # ~/.pi/agent/skills, and avoids duplicate Codex entries from ~/.codex/skills.
-    Link-FractalItem -Source $skillsSource -Target (Join-Path (Join-Path $HOME '.agents') 'skills')
+    # Codex Desktop and Pi both scan ~/.agents/skills. Keep that shared root as a
+    # real directory because Codex also places managed .system skills there; install
+    # fractal-ai skills as per-skill symlinks instead of owning the whole root.
+    $agentsSkillsTarget = Join-Path (Join-Path $HOME '.agents') 'skills'
+    Link-DirectoryChildren -Source $skillsSource -Target $agentsSkillsTarget
+    Restore-AgentsSystemSkills -Target $agentsSkillsTarget
     Remove-LegacySkillLink -Target (Join-Path (Join-Path $HOME '.codex') 'skills') -Source $skillsSource
     Remove-LegacySkillLink -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'skills') -Source $skillsSource
 

@@ -30,6 +30,50 @@ link_item() {
   ln -s "$source" "$target"
 }
 
+ensure_directory_target() {
+  local target="$1"
+
+  if [[ -L "$target" ]]; then
+    echo "  cleanup: replacing directory symlink $target with a real directory" >&2
+    rm "$target"
+  elif [[ -e "$target" && ! -d "$target" ]]; then
+    local backup
+    backup="${target}.bak-$(date +%Y%m%d-%H%M%S)"
+    echo "  BACKUP: displacing non-directory $target -> $backup (review before deleting)" >&2
+    mv "$target" "$backup"
+  fi
+
+  mkdir -p "$target"
+}
+
+link_directory_children() {
+  local source="$1"
+  local target="$2"
+  local child
+
+  ensure_directory_target "$target"
+  for child in "$source"/*; do
+    [[ -e "$child" ]] || continue
+    link_item "$child" "$target/$(basename "$child")"
+  done
+}
+
+restore_agents_system_skills() {
+  local target="$1"
+  local backup
+  local latest=""
+
+  [[ -e "$target/.system" ]] && return 0
+  for backup in "$target".bak-*; do
+    [[ -d "$backup/.system" ]] || continue
+    latest="$backup"
+  done
+  [[ -n "$latest" ]] || return 0
+
+  echo "  restore: copying Codex-managed system skills from $latest/.system" >&2
+  cp -a "$latest/.system" "$target/.system"
+}
+
 remove_legacy_skill_link() {
   local target="$1"
   local source="$2"
@@ -159,10 +203,11 @@ fi
 
 # ── Shared: deploy skills/ to supported skill roots ───────────────────
 if [[ -d "$skills_source" ]]; then
-  # Codex Desktop and Pi both scan ~/.agents/skills. Installing the shared
-  # skills there avoids duplicate Pi skill entries from also scanning
-  # ~/.pi/agent/skills, and avoids duplicate Codex entries from ~/.codex/skills.
-  link_item "$skills_source" "$HOME/.agents/skills"
+  # Codex Desktop and Pi both scan ~/.agents/skills. Keep that shared root as a
+  # real directory because Codex also places managed .system skills there; install
+  # fractal-ai skills as per-skill symlinks instead of owning the whole root.
+  link_directory_children "$skills_source" "$HOME/.agents/skills"
+  restore_agents_system_skills "$HOME/.agents/skills"
   remove_legacy_skill_link "$HOME/.codex/skills" "$skills_source"
   remove_legacy_skill_link "$HOME/.pi/agent/skills" "$skills_source"
 
