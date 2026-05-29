@@ -7,6 +7,11 @@
   "followUpMode": "all",
   "transport": "auto",
   "hideThinkingBlock": false,
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 64000
+  },
   "packages": [
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a"
   ]
