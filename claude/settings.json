@@ -45,6 +45,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/serena-hooks remind --client=claude-code",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [

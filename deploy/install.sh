@@ -185,7 +185,10 @@ ensure_serena_mcp() {
   #                  entry above also serves Pi — no separate Pi config needed
   #   * Codex:       [mcp_servers.serena] appended to ~/.codex/config.toml
   # `--open-web-dashboard False` stops Serena auto-opening a browser tab on every
-  # MCP start. Idempotent: only writes what is missing.
+  # MCP start. `--add-mode no-memories` drops Serena's memory + onboarding tools
+  # (Ben wants only the exploration/semantic tools). Idempotent: only writes what
+  # is missing. The Claude Code `serena-hooks remind` PreToolUse hook lives in
+  # claude/settings.json (deployed by symlink), not here.
   local serena_bin
   serena_bin="$(command -v serena 2>/dev/null || true)"
 
@@ -216,7 +219,7 @@ ensure_serena_mcp() {
       echo "  Registering Serena MCP for Claude Code (user scope)" >&2
       claude mcp add --scope user serena -- \
         "$serena_bin" start-mcp-server --context claude-code \
-        --project-from-cwd --open-web-dashboard False >/dev/null 2>&1 \
+        --project-from-cwd --open-web-dashboard False --add-mode no-memories >/dev/null 2>&1 \
         || echo "  WARN: 'claude mcp add serena' failed" >&2
     fi
   else
@@ -233,7 +236,7 @@ ensure_serena_mcp() {
         printf '\n[mcp_servers.serena]\n'
         printf 'startup_timeout_sec = 60\n'
         printf 'command = "%s"\n' "$serena_bin"
-        printf 'args = ["start-mcp-server", "--project-from-cwd", "--context=codex", "--open-web-dashboard", "False"]\n'
+        printf 'args = ["start-mcp-server", "--project-from-cwd", "--context=codex", "--open-web-dashboard", "False", "--add-mode", "no-memories"]\n'
       } >> "$codex_cfg"
     fi
   else

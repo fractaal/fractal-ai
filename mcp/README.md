@@ -40,6 +40,15 @@ trim tools overlapping the host's own builtins. We use:
 
 `--project-from-cwd` auto-activates whatever project the session is rooted in.
 
+**`--add-mode no-memories`** drops Serena's memory layer — Ben wants only the
+exploration/semantic tools. The built-in `no-memories` mode excludes
+`write_memory`, `read_memory`, `list_memories`, `delete_memory`, `edit_memory`,
+`rename_memory`, **and** `onboarding` (the onboarding workflow exists to create
+memories), and injects a prompt telling the agent memory/onboarding aren't in
+play. The semantic surface (`find_symbol`, `find_referencing_symbols`,
+`rename_symbol`, `replace_symbol_body`, `get_symbols_overview`, diagnostics, …)
+is untouched.
+
 **`--open-web-dashboard False`** is the important one: by default Serena opens a
 browser tab to its management dashboard on **every** MCP start, which is
 intolerable across N sessions. This flag suppresses the auto-open while leaving
@@ -57,7 +66,7 @@ Claude Code (also feeds Pi):
 ```bash
 claude mcp add --scope user serena -- \
   "$(command -v serena)" start-mcp-server \
-  --context claude-code --project-from-cwd --open-web-dashboard False
+  --context claude-code --project-from-cwd --open-web-dashboard False --add-mode no-memories
 ```
 
 Codex — `~/.codex/config.toml`:
@@ -66,7 +75,7 @@ Codex — `~/.codex/config.toml`:
 [mcp_servers.serena]
 startup_timeout_sec = 60
 command = "/home/benjude/.local/bin/serena"
-args = ["start-mcp-server", "--project-from-cwd", "--context=codex", "--open-web-dashboard", "False"]
+args = ["start-mcp-server", "--project-from-cwd", "--context=codex", "--open-web-dashboard", "False", "--add-mode", "no-memories"]
 ```
 
 `deploy/install.sh` (`ensure_serena_mcp`) installs Serena if missing and writes
@@ -80,17 +89,27 @@ codex  mcp get serena          # → enabled: true
 # Pi (interactive): run /mcp-status — serena should show "● serena  stdio  N tools"
 ```
 
-### Optional: Serena's Claude Code hooks + system-prompt override (NOT enabled here)
+### Usage nudge: the `serena-hooks remind` hook (ENABLED, Claude Code only)
 
-Serena's docs note that recent Claude Code / Opus builds bias hard toward
-builtin tools, and recommend (a) launching with
-`claude --system-prompt="$(serena prompts print-cc-system-prompt-override)"`
-and (b) `serena-hooks` reminder/activate/auto-approve hooks.
+Recent Claude Code / Opus builds bias hard toward builtin tools, so Serena's
+tools can sit unused. The least-invasive counter is the `remind` hook — a
+PreToolUse hook (matcher `""`, so it sees every tool to track state) that nudges
+the agent toward Serena's symbolic tools when it makes too many consecutive
+`grep`/`read` calls without one. It's wired in `claude/settings.json`:
 
-These are **deliberately not applied** in this repo: the system-prompt override
-*replaces* Claude Code's system prompt, and the hooks would inject into the
-carefully-ordered hook stack in `claude/settings.json`. They're alpha, opinionated,
-and would entangle Serena with our own harness config. If Serena tools end up
-underused in practice, revisit — start with the `serena-hooks remind` PreToolUse
-hook (least invasive) before touching the system prompt. See
+```json
+{ "matcher": "", "hooks": [ { "type": "command",
+  "command": "~/.local/bin/serena-hooks remind --client=claude-code", "timeout": 10 } ] }
+```
+
+It's non-blocking (exit 0; ~66ms/call) and only emits a reminder past a
+threshold. Codex also supports it (`serena-hooks remind --client=codex` in
+`~/.codex/hooks.json` + `features.codex_hooks=true`) — not wired here, since
+Ben's Codex hooks aren't repo-tracked. Pi has no equivalent.
+
+**Deliberately NOT applied:** Serena's `--system-prompt` override
+(`serena prompts print-cc-system-prompt-override`) — it *replaces* Claude Code's
+system prompt — and the `activate`/`cleanup`/`auto-approve` hooks. The override
+is the nuclear option for tool-use bias; reach for it only if the `remind` hook
+proves insufficient. See
 <https://oraios.github.io/serena/02-usage/030_clients.html>.
