@@ -22,6 +22,9 @@ Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/inst
   `sync-agents.sh`). Distributed only into `~/.claude/`.
 - `pi/` — Pi-only artifacts (`settings.json`, `extensions/`, Pi-specific notes). Distributed
   only into `~/.pi/agent/`.
+- `mcp/` — cross-harness MCP server wiring (Serena). Not symlinked: `install.sh` injects
+  entries into each harness's runtime config (`~/.claude.json` for Claude Code + Pi's
+  bridge, `~/.codex/config.toml` for Codex). See `mcp/README.md`.
 - `deploy/` — install scripts (POSIX + PowerShell).
 
 When adding new content, decide first whether it's tool-agnostic (lives at root or under

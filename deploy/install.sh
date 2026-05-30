@@ -177,6 +177,70 @@ ensure_pi_mcp_bridge_cache() {
   fi
 }
 
+ensure_serena_mcp() {
+  # Serena (https://github.com/oraios/serena) — semantic-code MCP server, wired
+  # into every harness Ben uses. See mcp/README.md for the architecture.
+  #   * Claude Code: user-scope entry in ~/.claude.json (via `claude mcp add`)
+  #   * Pi:          its claude-mcp-bridge reads ~/.claude.json, so the Claude
+  #                  entry above also serves Pi — no separate Pi config needed
+  #   * Codex:       [mcp_servers.serena] appended to ~/.codex/config.toml
+  # `--open-web-dashboard False` stops Serena auto-opening a browser tab on every
+  # MCP start. Idempotent: only writes what is missing.
+  local serena_bin
+  serena_bin="$(command -v serena 2>/dev/null || true)"
+
+  if [[ -z "$serena_bin" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      echo "  Installing Serena (uv tool install serena-agent)" >&2
+      if uv tool install -p 3.13 serena-agent >/dev/null 2>&1; then
+        serena_bin="$(command -v serena 2>/dev/null || echo "$HOME/.local/bin/serena")"
+      else
+        echo "  WARN: failed to install serena-agent; skipping Serena MCP wiring" >&2
+        return 0
+      fi
+    else
+      echo "  WARN: serena not found and uv unavailable; skipping Serena MCP wiring" >&2
+      return 0
+    fi
+  fi
+
+  # Best-effort: stop the dashboard browser tab for all Serena usage on this box.
+  local serena_cfg="$HOME/.serena/serena_config.yml"
+  if [[ -f "$serena_cfg" ]]; then
+    sed -i 's/^web_dashboard_open_on_launch: true/web_dashboard_open_on_launch: false/' "$serena_cfg" 2>/dev/null || true
+  fi
+
+  # Claude Code (also feeds Pi via the claude-mcp-bridge reading ~/.claude.json).
+  if command -v claude >/dev/null 2>&1; then
+    if ! claude mcp get serena >/dev/null 2>&1; then
+      echo "  Registering Serena MCP for Claude Code (user scope)" >&2
+      claude mcp add --scope user serena -- \
+        "$serena_bin" start-mcp-server --context claude-code \
+        --project-from-cwd --open-web-dashboard False >/dev/null 2>&1 \
+        || echo "  WARN: 'claude mcp add serena' failed" >&2
+    fi
+  else
+    echo "  WARN: claude CLI not found; Serena not wired for Claude Code / Pi" >&2
+  fi
+
+  # Codex.
+  local codex_cfg="$HOME/.codex/config.toml"
+  if [[ -f "$codex_cfg" ]]; then
+    if ! grep -q '^\[mcp_servers\.serena\]' "$codex_cfg"; then
+      echo "  Registering Serena MCP for Codex (~/.codex/config.toml)" >&2
+      cp -a "$codex_cfg" "$codex_cfg.bak-$(date +%Y%m%d-%H%M%S)"
+      {
+        printf '\n[mcp_servers.serena]\n'
+        printf 'startup_timeout_sec = 60\n'
+        printf 'command = "%s"\n' "$serena_bin"
+        printf 'args = ["start-mcp-server", "--project-from-cwd", "--context=codex", "--open-web-dashboard", "False"]\n'
+      } >> "$codex_cfg"
+    fi
+  else
+    echo "  NOTE: ~/.codex/config.toml absent; create it (run Codex once) and re-run install to wire Serena" >&2
+  fi
+}
+
 # ── Shared sources (portable across all AI tools) ─────────────────────
 deployed_instructions_source="$FRACTAL_AI_HOME/DEPLOYED-INSTRUCTIONS.md"
 skills_source="$FRACTAL_AI_HOME/skills"
@@ -239,5 +303,8 @@ fi
 if [[ -d "$pi_extensions_source" ]]; then
   link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
 fi
+
+# ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────
+ensure_serena_mcp
 
 warn_stale_settings_local

@@ -9,3 +9,7 @@ skills/.system/
 
 # Per-machine Claude Code overrides at the project level — not source-of-truth.
 .claude/settings.local.json
+
+# Serena per-project activation state, created when Serena runs with
+# --project-from-cwd in this repo. Per-machine generated artifact, not source.
+.serena/
