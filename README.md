@@ -20,10 +20,13 @@ A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported t
 ├── pi/                         # Pi-specific settings and extensions
 │   ├── settings.json           # Portable Pi user settings
 │   └── extensions/             # Pi TypeScript extensions
+├── codex/                      # Codex-specific
+│   └── config.toml             # Portable Codex settings (merged into ~/.codex/config.toml, not symlinked)
 ├── mcp/                        # Cross-harness MCP server wiring (Serena)
 │   └── README.md               # MCP architecture; entries injected by install.sh, not symlinked
 └── deploy/
     ├── install.sh              # Symlinks sources into tool config dirs (POSIX)
+    ├── install.local.sh        # GITIGNORED machine-local/private wiring, sourced by install.sh (absent here)
     └── install.ps1             # Same on PowerShell / Windows
 ```
 
@@ -78,7 +81,9 @@ The install scripts symlink into the following locations, backing up any existin
 
 `pi/settings.json` is the single source of truth for portable Pi user settings, including pinned Pi packages. Pi runtime state (`auth.json`, sessions, npm/git package caches) stays under `~/.pi/agent/` and is not tracked here. Shared skills live in `~/.agents/skills`, which Codex Desktop creates/uses and Pi also scans; the installer removes legacy fractal-ai symlinks at `~/.codex/skills` and `~/.pi/agent/skills` to avoid duplicate skill entries. Pi 0.75.1 intentionally has no built-in MCP support, so this repo installs Ben's pinned `fractaal/pi-extension` fork to bridge normal MCP config files into direct Pi tools without blocking Pi startup.
 
-MCP servers (e.g. [Serena](https://github.com/oraios/serena)) reach all three harnesses but are **not** symlinked — each harness keeps its MCP config inside a runtime state file that also holds auth and per-machine state. Instead, `install.sh` (`ensure_serena_mcp`) injects entries idempotently into `~/.claude.json` (Claude Code; the Pi bridge reads this file too, so it covers Pi) and `~/.codex/config.toml` (Codex). See `mcp/README.md` for the architecture and the Serena specifics.
+`codex/config.toml` is the source of truth for portable Codex settings (model, approval/sandbox posture, `[features]`, `[notice]`, env policy). It is **merged**, not symlinked: `install.sh` (`ensure_codex_config`) overlays these keys into `~/.codex/config.toml` via `tomlkit` (needs `uv`), leaving the file's per-machine/runtime sections untouched — `[projects.*]` trust paths, `[marketplaces.*]`, `[plugins.*]`, `[hooks.state.*]`, Codex-Desktop's `node_repl`, `[tui.*]`. A symlink is wrong here because that file co-mingles portable prefs with private per-machine state (and Codex rewrites it constantly). The merge rebuilds root-scalars-before-tables so a newly added top-level key can't get reparented under a preceding table. Re-running is safe; a timestamped `.bak` is written each run.
+
+MCP servers ([Serena](https://github.com/oraios/serena)) reach all three harnesses but are **not** symlinked — each harness keeps its MCP config inside a runtime state file that also holds auth and per-machine state. Instead, `install.sh` (`ensure_serena_mcp`) injects entries idempotently into `~/.claude.json` (Claude Code; the Pi bridge reads this file too, so it covers Pi) and `~/.codex/config.toml` (Codex). Private/internal MCP servers (endpoints that shouldn't be world-readable in this public repo) are wired by the gitignored `deploy/install.local.sh`, which `install.sh` sources last. See `mcp/README.md` for the architecture and specifics.
 
 `~/.claude/settings.local.json` is **not** part of this repo. It's a per-machine, user-managed override that Claude Code scopes by cwd ancestry — only sessions whose cwd is under `$HOME` see it. Reserve it for genuinely machine-local entries (e.g. distro-specific permission allowlists). Do **not** put hooks or statusLine there; sessions started outside `$HOME` (e.g. `/opt/...`) won't load them.
 

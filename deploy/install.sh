@@ -244,6 +244,69 @@ ensure_serena_mcp() {
   fi
 }
 
+ensure_codex_config() {
+  # Codex's ~/.codex/config.toml co-mingles portable prefs (model, approval/sandbox
+  # posture, features) with per-machine runtime state: [projects.*] trust paths,
+  # [marketplaces.*], [plugins.*], [hooks.state.*], Codex-Desktop's node_repl,
+  # [tui.*]. So we cannot symlink it — that would leak the trust-path tree into
+  # this public repo and be clobbered by Codex on every run. Instead we MERGE the
+  # portable subset from codex/config.toml into the base file with a TOML-correct
+  # overlay (tomlkit via uv): managed keys update in place, tables merge, and the
+  # doc is rebuilt so root scalars always precede tables (else TOML reparents a new
+  # root scalar under the preceding table and corrupts the file). Everything not in
+  # codex/config.toml is left exactly as Codex/Desktop wrote it. Idempotent.
+  local src="$FRACTAL_AI_HOME/codex/config.toml"
+  local dst="$HOME/.codex/config.toml"
+  [[ -f "$src" ]] || return 0
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "  NOTE: codex CLI not found; skipping Codex config management" >&2
+    return 0
+  fi
+  if [[ ! -f "$dst" ]]; then
+    echo "  NOTE: ~/.codex/config.toml absent; run Codex once, then re-run install to manage it" >&2
+    return 0
+  fi
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "  WARN: uv not found; cannot merge Codex config (needs tomlkit). Skipping." >&2
+    return 0
+  fi
+  echo "  Merging portable Codex config into ~/.codex/config.toml" >&2
+  cp -a "$dst" "$dst.bak-$(date +%Y%m%d-%H%M%S)"
+  if ! uv run --quiet --with tomlkit python3 - "$dst" "$src" <<'PY'
+import sys, tomlkit
+dst_path, src_path = sys.argv[1], sys.argv[2]
+dst = tomlkit.parse(open(dst_path).read())
+src = tomlkit.parse(open(src_path).read())
+
+def is_tbl(x):
+    return hasattr(x, "items") and not isinstance(x, str)
+
+def overlay(d, s):
+    for k, v in s.items():
+        if is_tbl(v) and k in d and is_tbl(d[k]):
+            overlay(d[k], v)
+        else:
+            d[k] = v
+
+overlay(dst, src)
+
+# Rebuild root scalars-before-tables so a newly added root scalar can never be
+# reparented under a preceding table (the TOML footgun that corrupts the file).
+out = tomlkit.document()
+for k, item in list(dst.items()):
+    if not is_tbl(item):
+        out[k] = item
+for k, item in list(dst.items()):
+    if is_tbl(item):
+        out[k] = item
+
+open(dst_path, "w").write(tomlkit.dumps(out))
+PY
+  then
+    echo "  WARN: Codex config merge failed; original is preserved at the .bak above" >&2
+  fi
+}
+
 # ── Shared sources (portable across all AI tools) ─────────────────────
 deployed_instructions_source="$FRACTAL_AI_HOME/DEPLOYED-INSTRUCTIONS.md"
 skills_source="$FRACTAL_AI_HOME/skills"
@@ -309,5 +372,16 @@ fi
 
 # ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────
 ensure_serena_mcp
+
+# ── Codex portable config (merged into ~/.codex/config.toml, not symlinked) ──
+ensure_codex_config
+
+# ── Machine-local / private wiring (gitignored). Sourced last so it can use the
+#    helpers/env above; holds anything whose details must not be in this public
+#    repo (e.g. internal MCP endpoints). Absent on most machines. ──
+if [[ -f "$FRACTAL_AI_HOME/deploy/install.local.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "$FRACTAL_AI_HOME/deploy/install.local.sh"
+fi
 
 warn_stale_settings_local

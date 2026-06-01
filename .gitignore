@@ -10,6 +10,10 @@ skills/.system/
 # Per-machine Claude Code overrides at the project level — not source-of-truth.
 .claude/settings.local.json
 
+# Machine-local / private install wiring sourced by deploy/install.sh — e.g.
+# internal MCP servers whose endpoints must not live in this public repo.
+deploy/install.local.sh
+
 # Serena per-project activation state, created when Serena runs with
 # --project-from-cwd in this repo. Per-machine generated artifact, not source.
 .serena/

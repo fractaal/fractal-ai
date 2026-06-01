@@ -22,10 +22,17 @@ Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/inst
   `sync-agents.sh`). Distributed only into `~/.claude/`.
 - `pi/` — Pi-only artifacts (`settings.json`, `extensions/`, Pi-specific notes). Distributed
   only into `~/.pi/agent/`.
+- `codex/` — Codex-only artifacts (`config.toml`). NOT symlinked: `install.sh`
+  (`ensure_codex_config`) MERGES the portable keys into `~/.codex/config.toml` via tomlkit,
+  preserving that file's per-machine/runtime sections (`[projects.*]`, `[marketplaces.*]`,
+  `[plugins.*]`, `[hooks.state.*]`, `node_repl`, `[tui.*]`). Only the keys present in
+  `codex/config.toml` are managed.
 - `mcp/` — cross-harness MCP server wiring (Serena). Not symlinked: `install.sh` injects
   entries into each harness's runtime config (`~/.claude.json` for Claude Code + Pi's
   bridge, `~/.codex/config.toml` for Codex). See `mcp/README.md`.
-- `deploy/` — install scripts (POSIX + PowerShell).
+- `deploy/` — install scripts (POSIX + PowerShell). `install.local.sh` is a GITIGNORED
+  machine-local layer sourced last by `install.sh` for private wiring (e.g. internal MCP
+  endpoints) that must not live in this public repo.
 
 When adding new content, decide first whether it's tool-agnostic (lives at root or under
 `skills/`) or tool-specific (lives under that tool's subdir).

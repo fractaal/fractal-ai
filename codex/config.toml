@@ -1,0 +1,42 @@
+# Portable Codex settings — the source of truth for Ben's cross-machine Codex
+# preferences. NOT symlinked into place: deploy/install.sh (ensure_codex_config)
+# MERGES these keys into ~/.codex/config.toml with a TOML-correct overlay
+# (tomlkit), because that file co-mingles these portable prefs with per-machine
+# runtime state that must NOT live in this public repo and must NOT be clobbered
+# on re-install:
+#   [projects.*]      trusted directory paths (Ben's private dir tree)
+#   [marketplaces.*]  local plugin-marketplace paths + timestamps + revisions
+#   [mcp_servers.*]   MCP servers — serena is wired by ensure_serena_mcp, private
+#                     servers by deploy/install.local.sh; node_repl /
+#                     chrome-devtools are written by Codex Desktop
+#   [hooks.state.*]   per-machine hook-trust hashes
+#   [tui.*]           UI nudge counters
+#   [plugins.*]       coupled to the local marketplaces above (machine-specific)
+# Only the keys present in THIS file are managed; everything else in
+# ~/.codex/config.toml is left exactly as Codex/Desktop wrote it.
+
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+
+# Approval / sandbox posture. NOTE: this is Ben's deliberate single-user-box
+# posture (full access, no approval gate). install.sh applies it to ANY machine
+# it runs on — keep that in mind before running the installer somewhere new.
+approval_policy = "never"
+approvals_reviewer = "user"
+sandbox_mode = "danger-full-access"
+dangerously_bypass_approvals_and_sandbox = true
+
+[notice]
+hide_full_access_warning = true
+hide_rate_limit_model_nudge = true
+
+[features]
+js_repl = false
+terminal_resize_reflow = true
+memories = true
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"

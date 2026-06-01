@@ -113,3 +113,32 @@ system prompt — and the `activate`/`cleanup`/`auto-approve` hooks. The overrid
 is the nuclear option for tool-use bias; reach for it only if the `remind` hook
 proves insufficient. See
 <https://oraios.github.io/serena/02-usage/030_clients.html>.
+
+## Private / machine-local MCP servers
+
+Some MCP servers can't be described in this **public** repo — e.g. internal
+endpoints, or anything whose URL/auth shouldn't be world-readable. Those are
+wired by a **gitignored** local layer, `deploy/install.local.sh`
+(`.gitignore: deploy/install.local.sh`), which `install.sh` sources near the end
+of its run. It uses the exact same inject-don't-symlink pattern as Serena
+(`claude mcp add --scope user …` for Claude/Pi, `codex mcp add …` for Codex) and
+should stay idempotent.
+
+Conventions for entries in that local layer:
+
+- **Never put the secret in the entry.** Reference an env var instead — Claude
+  Code expands `${VAR}` in an `Authorization` header at connect time, and Codex
+  reads a token via `bearer_token_env_var`. The secret itself lives in a
+  machine-local file (e.g. a shell `conf.d` export), never in any config Codex or
+  Claude writes to disk.
+- **Gate on the secret being present.** If the env var is unset, skip wiring
+  rather than register an endpoint that can't authenticate — keeps it off
+  machines that aren't entitled to it.
+
+The contents of `install.local.sh` are intentionally not documented here; read
+the file itself on a machine that has it.
+
+> **Windows note:** `deploy/install.ps1` wires **no** cross-harness MCP server at
+> all (not even Serena; only the Pi bridge). The PowerShell installer is behind
+> the POSIX one on MCP injection generally; if Windows parity is ever needed,
+> port `ensure_serena_mcp` (and any local-layer equivalents) over together.
