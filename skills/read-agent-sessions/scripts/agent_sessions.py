@@ -194,6 +194,61 @@ def cmd_prerender(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_search(args: argparse.Namespace) -> int:
+    """Semantic search over the prerendered sessions corpus.
+
+    This is read-agent-sessions' own semantic component: meaning-based recall
+    across every harness's sessions, complementing the lexical `grep`/`find`.
+    It runs on `qmd` over the `sessions` collection that `prerender` feeds. That
+    `qmd` and that collection also back the engineering-logs tooling is
+    incidental — nothing here calls into another skill.
+    """
+    import contextlib
+    import os
+    import shutil
+    import subprocess
+
+    qmd = shutil.which("qmd")
+    if not qmd:
+        print(
+            "search: 'qmd' is not on PATH, so semantic search is unavailable.\n"
+            "Install it with:  bun install -g @tobilu/qmd",
+            file=sys.stderr,
+        )
+        return 127
+
+    env = os.environ.copy()
+    if args.lean:
+        env.setdefault("QMD_GENERATE_MODEL", "hf:ggml-org/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf")
+        env.setdefault("QMD_EXPAND_CONTEXT_SIZE", "1024")
+        env.setdefault("QMD_RERANK_CONTEXT_SIZE", "2048")
+        env.setdefault("QMD_EMBED_CONTEXT_SIZE", "2048")
+
+    # Keep the corpus current. --prerender renders any brand-new sessions to
+    # Markdown first (this skill's own producer step); `qmd update`+`embed` then
+    # index whatever changed. All are no-ops when nothing is new. Their chatter
+    # goes to stderr so stdout carries only the search results.
+    if not args.no_refresh:
+        if args.prerender:
+            from prerender import prerender as _prerender
+            sessions_dir = Path.home() / "Dropbox" / "DropsyncFiles" / "MindPalace" / "Sessions"
+            with contextlib.redirect_stdout(sys.stderr):
+                _prerender(sessions_dir, force=False)
+        subprocess.run([qmd, "update"], stdout=sys.stderr, env=env)
+        subprocess.run([qmd, "embed"], stdout=sys.stderr, env=env)
+
+    cmd = [qmd, "query", args.query, "--md", "-c", "sessions"]
+    if args.lean:
+        cmd += ["--no-rerank", "-C", "20"]
+    if args.limit is not None:
+        cmd += ["-n", str(args.limit)]
+    if args.full:
+        cmd.append("--full")
+    if args.json:
+        cmd.append("--json")
+    return subprocess.call(cmd, env=env)
+
+
 def resolve_target(args: argparse.Namespace) -> tuple[Provider, Path]:
     target = args.target
     harness_filter = getattr(args, "harness", None)
@@ -309,6 +364,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-turns", type=int, default=3, help="Skip sessions with fewer user turns.")
     p.add_argument("--dry-run", action="store_true", help="Show what would be rendered without writing.")
     p.set_defaults(func=cmd_prerender)
+
+    # search
+    p = sub.add_parser("search", help="Semantic search over sessions (meaning-based; spans all harnesses).")
+    p.add_argument("query")
+    p.add_argument("-n", "--limit", type=int, default=None, help="Max results (qmd -n).")
+    p.add_argument("--lean", action="store_true", help="0.6B expansion + no reranking, for constrained machines.")
+    p.add_argument("--prerender", action="store_true", help="Render brand-new sessions before searching (on-demand freshness).")
+    p.add_argument("--no-refresh", action="store_true", help="Skip the update/embed freshness pass; query the index as-is.")
+    p.add_argument("--full", action="store_true", help="Full document bodies instead of snippets.")
+    p.add_argument("--json", action="store_true", help="Emit JSON instead of Markdown.")
+    p.set_defaults(func=cmd_search)
 
     return parser
 
