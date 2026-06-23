@@ -127,13 +127,93 @@ function activeReasoning(pi: ExtensionAPI) {
 	return thinkingLevel === "off" ? undefined : thinkingLevel;
 }
 
+const OPENAI_TEXT_PART_LIMIT = 10_485_760;
+const DEFAULT_SAFE_TEXT_PART_LIMIT = 9_500_000;
+
+function safeTextPartLimit(): number {
+	const raw = process.env.PI_FRACTAL_COMPACT_MAX_TEXT_CHARS;
+	if (!raw) return DEFAULT_SAFE_TEXT_PART_LIMIT;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_SAFE_TEXT_PART_LIMIT;
+	return Math.min(parsed, OPENAI_TEXT_PART_LIMIT - 1_000);
+}
+
+type MaybeTextContentMessage = {
+	role?: string;
+	customType?: string;
+	content?: string | Array<{ type: string; text?: string }>;
+};
+
+function textFromMessage(message: MaybeTextContentMessage): string | undefined {
+	if (typeof message.content === "string") return message.content;
+	if (!Array.isArray(message.content)) return undefined;
+	const textParts = message.content
+		.filter((part): part is { type: string; text: string } => part.type === "text" && typeof part.text === "string")
+		.map((part) => part.text);
+	return textParts.length > 0 ? textParts.join("\n") : undefined;
+}
+
+function withStringContent<T extends MaybeTextContentMessage>(message: T, content: string): T {
+	return { ...message, content };
+}
+
+function goalContinuationKey(message: MaybeTextContentMessage): string | undefined {
+	if (message.role !== "custom" || message.customType !== "pi-goal-event") return undefined;
+	const text = textFromMessage(message);
+	if (!text?.startsWith("<pi_goal_continuation ")) return undefined;
+	const match = text.match(/^<pi_goal_continuation\s+goal_id="([^"]+)"\s+kind="([^"]+)"/);
+	return match ? `${match[1]}:${match[2]}` : undefined;
+}
+
+function compactRepeatedGoalContinuations<T extends MaybeTextContentMessage>(messages: T[]) {
+	const groups = new Map<string, { firstIndex: number; lastIndex: number; count: number; chars: number }>();
+	messages.forEach((message, index) => {
+		const key = goalContinuationKey(message);
+		if (!key) return;
+		const chars = textFromMessage(message)?.length ?? 0;
+		const group = groups.get(key);
+		if (group) {
+			group.lastIndex = index;
+			group.count += 1;
+			group.chars += chars;
+		} else {
+			groups.set(key, { firstIndex: index, lastIndex: index, count: 1, chars });
+		}
+	});
+
+	let collapsedCount = 0;
+	let collapsedChars = 0;
+	const compacted = messages.flatMap((message, index): T[] => {
+		const key = goalContinuationKey(message);
+		const group = key ? groups.get(key) : undefined;
+		if (!key || !group || group.count <= 1) return [message];
+		if (index === group.firstIndex) {
+			const [goalId, kind] = key.split(":", 2);
+			const omittedCount = group.count - 1;
+			const omittedChars = group.chars - (textFromMessage(messages[group.lastIndex])?.length ?? 0);
+			collapsedCount += omittedCount;
+			collapsedChars += omittedChars;
+			return [
+				withStringContent(
+					message,
+					`<pi_goal_continuation_compaction_note goal_id="${goalId}" kind="${kind}">\n[COMPACTION NOTE]\nCollapsed ${omittedCount} repeated active-goal continuation checkpoint message(s), totaling ${omittedChars} characters before compaction. These were Pi goal-system reminders, not user-authored task changes. The latest full checkpoint for this goal/kind is kept later in the transcript slice; the active goal file and raw session transcript remain authoritative if exact checkpoint text is needed.\n</pi_goal_continuation_compaction_note>`,
+				),
+			];
+		}
+		if (index === group.lastIndex) return [message];
+		return [];
+	});
+
+	return { messages: compacted, collapsedCount, collapsedChars };
+}
+
 async function generateFractalSummary(pi: ExtensionAPI, ctx: ExtensionContext, event: Parameters<Parameters<ExtensionAPI["on"]>[1]>[0] & any): Promise<string> {
 	if (!ctx.model) throw new Error("No model selected");
 
 	const { preparation, customInstructions, signal } = event;
 	const { messagesToSummarize, turnPrefixMessages, previousSummary, tokensBefore, settings } = preparation;
-	const allMessages = [...messagesToSummarize, ...turnPrefixMessages];
-	const conversationText = serializeConversation(convertToLlm(allMessages));
+	const goalCompaction = compactRepeatedGoalContinuations([...messagesToSummarize, ...turnPrefixMessages]);
+	const conversationText = serializeConversation(convertToLlm(goalCompaction.messages));
 	const sessionFile = ctx.sessionManager.getSessionFile() ?? "unpersisted/unknown session file";
 	const sessionId = ctx.sessionManager.getSessionId();
 	const previousContext = previousSummary ? `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n` : "";
@@ -141,6 +221,12 @@ async function generateFractalSummary(pi: ExtensionAPI, ctx: ExtensionContext, e
 	const splitTurnNote = turnPrefixMessages.length > 0 ? "\n\nNote: part of the most recent oversized turn is retained outside this summary. Summarize the retained prefix so the kept suffix remains understandable." : "";
 
 	const prompt = `<session-metadata>\nSession ID: ${sessionId}\nSession transcript path: ${sessionFile}\nCurrent cwd: ${ctx.cwd}\nTokens before compaction: ${tokensBefore}\n</session-metadata>\n\n${previousContext}<conversation>\n${conversationText}\n</conversation>${splitTurnNote}${customFocus}\n\n${FRACTAL_COMPACT_PROMPT}`;
+	const textPartLimit = safeTextPartLimit();
+	if (prompt.length > textPartLimit) {
+		throw new Error(
+			`Fractal compaction prompt is ${prompt.length} characters after collapsing ${goalCompaction.collapsedCount} repeated goal checkpoint(s) (${goalCompaction.collapsedChars} chars); safe text-part limit is ${textPartLimit}. Compaction cancelled before provider call.`,
+		);
+	}
 
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
 	if (!auth.ok) throw new Error(auth.error);

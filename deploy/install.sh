@@ -177,6 +177,25 @@ ensure_pi_mcp_bridge_cache() {
   fi
 }
 
+apply_pi_runtime_patches() {
+  local patch_script="$FRACTAL_AI_HOME/pi/patches/apply-pi-runtime-patches.mjs"
+  [[ -f "$patch_script" ]] || return 0
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  WARN: node not found; cannot apply Pi runtime patches" >&2
+    return 0
+  fi
+  if ! command -v pi >/dev/null 2>&1; then
+    echo "  WARN: pi not found; cannot apply Pi runtime patches" >&2
+    return 0
+  fi
+
+  if ! node "$patch_script"; then
+    echo "  ERROR: Pi runtime patch application failed; inspect $patch_script" >&2
+    return 1
+  fi
+}
+
 ensure_serena_mcp() {
   # Serena (https://github.com/oraios/serena) — semantic-code MCP server, wired
   # into every harness Ben uses. See mcp/README.md for the architecture.
@@ -369,6 +388,8 @@ fi
 if [[ -d "$pi_extensions_source" ]]; then
   link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
 fi
+
+apply_pi_runtime_patches
 
 # ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────
 ensure_serena_mcp
