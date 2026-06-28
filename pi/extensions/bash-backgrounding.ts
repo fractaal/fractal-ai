@@ -9,10 +9,8 @@ import { Type } from "typebox";
 
 const FOREGROUND_BUDGET_MS = 60_000;
 const MAX_FOREGROUND_WAIT_SECONDS = FOREGROUND_BUDGET_MS / 1000;
-const DEFAULT_COMMAND_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_SET_TIMEOUT_MS = 2_147_483_647;
 const MAX_KILL_AFTER_SECONDS = Math.floor(MAX_SET_TIMEOUT_MS / 1000);
-const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TAIL_BYTES = 16 * 1024;
 const TOOL_OUTPUT_BYTES = 50 * 1024;
 const TOOL_OUTPUT_LINES = 2000;
@@ -28,7 +26,7 @@ const bashParams = Type.Object({
 		description: "Seconds to wait in the foreground before returning a background task id. This only controls responsiveness. It does not kill the command. Default: 60. Maximum: 60.",
 	})),
 	kill_after_seconds: Type.Optional(Type.Number({
-		description: "Optional hard kill deadline for the command after it starts. Blunt instrument; avoid unless the command is known to hang. Must be greater than or equal to background_after_seconds. If omitted, Pi uses the internal safety cap.",
+		description: "Optional hard kill deadline for the command after it starts. Blunt instrument; avoid unless the command is known to hang. Must be greater than or equal to background_after_seconds. If omitted, no kill deadline is applied.",
 	})),
 	description: Type.Optional(Type.String({ description: "Short description of the command" })),
 	run_in_background: Type.Optional(Type.Boolean({ description: "Start the command as a background task immediately" })),
@@ -45,6 +43,11 @@ const bashOutputParams = Type.Object({
 
 const killBashParams = Type.Object({
 	task_id: Type.String({ description: "Background bash task id to stop" }),
+	reason: Type.Optional(Type.String({ description: "Reason for stopping the task" })),
+});
+
+const bashTasksParams = Type.Object({
+	status: Type.Optional(Type.String({ description: "Optional status filter: running, completed, failed, or killed" })),
 });
 
 type TaskStatus = "running" | "completed" | "failed" | "killed";
@@ -76,12 +79,10 @@ interface TaskRecord {
 	completion: Promise<TaskCompletion>;
 	resolveCompletion: (completion: TaskCompletion) => void;
 	backgroundAfterMs: number;
-	killAfterMs: number;
+	killAfterMs?: number;
 	killTimer?: ReturnType<typeof setTimeout>;
-	sizeWatchdog?: ReturnType<typeof setInterval>;
 	tailChunks: string[];
 	tailBytes: number;
-	outputBytes: number;
 	completionSettled: boolean;
 }
 
@@ -182,7 +183,6 @@ function finishTask(pi: ExtensionAPI, task: TaskRecord, status: Exclude<TaskStat
 		task.exitCode = exitCode;
 	}
 	if (task.killTimer) clearTimeout(task.killTimer);
-	if (task.sizeWatchdog) clearInterval(task.sizeWatchdog);
 	const settle = () => {
 		if (task.completionSettled) return;
 		task.completionSettled = true;
@@ -237,7 +237,7 @@ async function spawnTask(
 	command: string,
 	cwd: string,
 	backgroundAfterSeconds: number,
-	killAfterSeconds: number,
+	killAfterSeconds: number | undefined,
 	description: string | undefined,
 ): Promise<TaskRecord> {
 	const taskId = `bash-${randomUUID()}`;
@@ -273,10 +273,9 @@ async function spawnTask(
 		resolveCompletion,
 		tailChunks: [],
 		tailBytes: 0,
-		outputBytes: 0,
 		completionSettled: false,
 		backgroundAfterMs: Math.round(backgroundAfterSeconds * 1000),
-		killAfterMs: Math.round(killAfterSeconds * 1000),
+		killAfterMs: killAfterSeconds === undefined ? undefined : Math.round(killAfterSeconds * 1000),
 	};
 	tasks.set(taskId, task);
 	stream.on("error", (error) => {
@@ -287,15 +286,6 @@ async function spawnTask(
 	});
 	const writeChunk = (chunk: Buffer | string) => {
 		appendTail(task, chunk);
-		task.outputBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-		if (task.outputBytes > MAX_OUTPUT_BYTES && task.status === "running" && !task.reason) {
-			const reason = `output exceeded ${MAX_OUTPUT_BYTES} bytes`;
-			const msg = `\n[${reason}; task killed]\n`;
-			appendTail(task, msg);
-			if (!stream.writableEnded && !stream.destroyed) stream.write(msg);
-			requestKill(pi, task, reason);
-			return;
-		}
 		if (stream.writableEnded || stream.destroyed) return;
 		const ok = stream.write(chunk);
 		if (!ok) {
@@ -321,26 +311,17 @@ async function spawnTask(
 			finishTask(pi, task, exitCode === 0 ? "completed" : "failed", exitCode);
 		}
 	});
-	task.killTimer = setTimeout(() => {
-		if (task.status !== "running") return;
-		const reason = `command killed after ${formatDuration(task.killAfterMs)}`;
-		const msg = `\n[${reason}; task killed]\n`;
-		appendTail(task, msg);
-		if (!stream.writableEnded && !stream.destroyed) stream.write(msg);
-		requestKill(pi, task, reason);
-	}, task.killAfterMs);
-	task.killTimer.unref();
-	task.sizeWatchdog = setInterval(() => {
-		void stat(outputPath).then((s) => {
-			if (task.status !== "running" || task.reason || s.size <= MAX_OUTPUT_BYTES) return;
-			const reason = `output exceeded ${MAX_OUTPUT_BYTES} bytes`;
+	if (task.killAfterMs !== undefined) {
+		task.killTimer = setTimeout(() => {
+			if (task.status !== "running") return;
+			const reason = `command killed after ${formatDuration(task.killAfterMs!)}`;
 			const msg = `\n[${reason}; task killed]\n`;
 			appendTail(task, msg);
 			if (!stream.writableEnded && !stream.destroyed) stream.write(msg);
 			requestKill(pi, task, reason);
-		}, () => undefined);
-	}, 5_000);
-	task.sizeWatchdog.unref();
+		}, task.killAfterMs);
+		task.killTimer.unref();
+	}
 	return task;
 }
 
@@ -361,6 +342,9 @@ function taskSummary(task: TaskRecord): string {
 		`status: ${task.status}`,
 		task.exitCode !== null ? `exit_code: ${task.exitCode}` : undefined,
 		task.reason ? `reason: ${task.reason}` : undefined,
+		`started_at: ${new Date(task.startedAt).toISOString()}`,
+		task.killAfterMs !== undefined ? `kill_after: ${formatDuration(task.killAfterMs)}` : "kill_after: none",
+		`description: ${task.description}`,
 		`output_path: ${task.outputPath}`,
 	].filter(Boolean).join("\n");
 }
@@ -440,7 +424,7 @@ function rejectLegacyTimeout(params: Record<string, unknown>, toolName: "bash" |
 
 function resolveBashTiming(params: { background_after_seconds?: number; kill_after_seconds?: number }): {
 	backgroundAfterSeconds: number;
-	killAfterSeconds: number;
+	killAfterSeconds: number | undefined;
 } {
 	const backgroundAfterSeconds = parsePositiveSeconds(
 		params.background_after_seconds,
@@ -452,12 +436,11 @@ function resolveBashTiming(params: { background_after_seconds?: number; kill_aft
 	const killAfterSeconds = parsePositiveSeconds(
 		params.kill_after_seconds,
 		"kill_after_seconds",
-		DEFAULT_COMMAND_TIMEOUT_MS / 1000,
-	)!;
-	if (killAfterSeconds > MAX_KILL_AFTER_SECONDS) {
+	);
+	if (killAfterSeconds !== undefined && killAfterSeconds > MAX_KILL_AFTER_SECONDS) {
 		throw new Error(`kill_after_seconds cannot exceed ${MAX_KILL_AFTER_SECONDS} seconds because Node timers cannot safely represent a longer deadline. Use kill_bash later if the task still needs to be stopped.`);
 	}
-	if (killAfterSeconds < backgroundAfterSeconds) {
+	if (killAfterSeconds !== undefined && killAfterSeconds < backgroundAfterSeconds) {
 		throw new Error("kill_after_seconds must be greater than or equal to background_after_seconds.");
 	}
 	return { backgroundAfterSeconds, killAfterSeconds };
@@ -472,6 +455,21 @@ function resolveBashOutputWaitSeconds(value: number | undefined): number {
 function clampBytes(value: number | undefined, min: number, max: number, fallback: number): number {
 	if (value === undefined || !Number.isFinite(value)) return fallback;
 	return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function taskDetails(task: TaskRecord): Record<string, unknown> {
+	return {
+		taskId: task.taskId,
+		status: task.status,
+		exitCode: task.exitCode,
+		reason: task.reason,
+		description: task.description,
+		command: task.command,
+		cwd: task.cwd,
+		outputPath: task.outputPath,
+		startedAt: new Date(task.startedAt).toISOString(),
+		killAfterMs: task.killAfterMs,
+	};
 }
 
 function escapeXml(value: string): string {
@@ -489,12 +487,13 @@ export default function bashBackgrounding(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "bash",
 		label: "bash",
-		description: "Execute a bash command. Long-running commands auto-background after at most 1 minute and return a task id. Use bash_output to inspect progress and kill_bash to stop a task.",
+		description: "Execute a bash command. Long-running commands auto-background after at most 1 minute and return a task id. Commands have no default kill deadline; use kill_after_seconds only when you intentionally want a hard deadline. Use bash_output to inspect progress, bash_tasks to discover live tasks, and kill_bash to stop a task.",
 		promptSnippet: "Execute bash commands; long-running commands auto-background after at most 1 minute",
 		promptGuidelines: [
 			"Use bash for ordinary shell commands. If bash returns a task_id, Pi will send a follow-up session message when the task completes; use bash_output to inspect progress before then or kill_bash to stop it.",
 			"Use background_after_seconds only to control foreground responsiveness; it does not kill the command and cannot exceed 60 seconds.",
-			"Use kill_after_seconds only as an explicit hard kill deadline for commands known to hang. Prefer kill_bash for intentional stops after a task id exists.",
+			"Use kill_after_seconds only as an explicit hard kill deadline for commands known to hang. If omitted, no kill deadline is applied. Prefer kill_bash for intentional stops after a task id exists.",
+			"Use bash_tasks to discover live background bash tasks if the original task_id is no longer in context. Bash task tracking is in-memory and scoped to the current Pi process/session.",
 			"Use bash_output.wait_seconds only to control one polling call; it does not kill the task and cannot exceed 60 seconds.",
 			"Avoid manually appending '&' for long-running commands; prefer letting bash auto-background so Pi can track output and status.",
 			"Do not use nohup, disown, setsid, systemd-run, docker -d/--detach, or daemonizing shell patterns with bash; local Pi only has best-effort process-group tracking, not a sandbox/cgroup containment boundary.",
@@ -545,7 +544,7 @@ export default function bashBackgrounding(pi: ExtensionAPI) {
 		async execute(_toolCallId, params) {
 			rejectLegacyTimeout(params as Record<string, unknown>, "bash_output");
 			const task = tasks.get(params.task_id);
-			if (!task) throw new Error(`Unknown background bash task id: ${params.task_id}`);
+			if (!task) throw new Error(`Unknown background bash task id: ${params.task_id}. Use bash_tasks to list live tasks in this Pi process.`);
 			if (params.block === true) {
 				task.notifyOnCompletion = false;
 			}
@@ -553,7 +552,29 @@ export default function bashBackgrounding(pi: ExtensionAPI) {
 				await Promise.race([task.completion, delay(resolveBashOutputWaitSeconds(params.wait_seconds) * 1000)]);
 			}
 			const output = await readTail(task.outputPath, clampBytes(params.tail_bytes, 1, 262_144, DEFAULT_TAIL_BYTES));
-			return { content: [{ type: "text", text: [taskSummary(task), output.trimEnd()].filter(Boolean).join("\n\n") }], details: { outputPath: task.outputPath } };
+			return { content: [{ type: "text", text: [taskSummary(task), output.trimEnd()].filter(Boolean).join("\n\n") }], details: { ...taskDetails(task), outputPath: task.outputPath } };
+		},
+	});
+
+	pi.registerTool({
+		name: "bash_tasks",
+		label: "bash_tasks",
+		description: "List live background bash tasks tracked by this Pi process. Task tracking is in-memory; if Pi restarts, old task ids are no longer managed.",
+		promptSnippet: "List live background bash tasks",
+		parameters: bashTasksParams,
+		executionMode: "sequential",
+		async execute(_toolCallId, params) {
+			let allTasks = [...tasks.values()];
+			if (params.status) allTasks = allTasks.filter((task) => task.status === params.status);
+			allTasks.sort((a, b) => {
+				if (a.status === "running" && b.status !== "running") return -1;
+				if (a.status !== "running" && b.status === "running") return 1;
+				return b.startedAt - a.startedAt;
+			});
+			const text = allTasks.length === 0
+				? "No live background bash tasks tracked by this Pi process."
+				: allTasks.map((task) => taskSummary(task)).join("\n\n---\n\n");
+			return { content: [{ type: "text", text }], details: { tasks: allTasks.map(taskDetails) } };
 		},
 	});
 
@@ -565,14 +586,15 @@ export default function bashBackgrounding(pi: ExtensionAPI) {
 		parameters: killBashParams,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
+			const reason = params.reason?.trim() || "killed by kill_bash";
 			const task = tasks.get(params.task_id);
-			if (!task) throw new Error(`Unknown background bash task id: ${params.task_id}`);
+			if (!task) throw new Error(`Unknown background bash task id: ${params.task_id}. Use bash_tasks to list live tasks in this Pi process.`);
 			task.notifyOnCompletion = false;
 			if (task.status === "running") {
-				requestKill(pi, task, "killed by kill_bash");
+				requestKill(pi, task, reason);
 				await Promise.race([task.completion, delay(3_000)]);
 			}
-			return { content: [{ type: "text", text: `Task ${task.taskId} ${task.status}.` }], details: { outputPath: task.outputPath } };
+			return { content: [{ type: "text", text: `Task ${task.taskId} ${task.status}.\nreason: ${reason}` }], details: { ...taskDetails(task), outputPath: task.outputPath } };
 		},
 	});
 
@@ -581,6 +603,7 @@ export default function bashBackgrounding(pi: ExtensionAPI) {
 		const active = new Set(pi.getActiveTools());
 		if (active.has("bash")) {
 			active.add("bash_output");
+			active.add("bash_tasks");
 			active.add("kill_bash");
 			pi.setActiveTools([...active]);
 		}
