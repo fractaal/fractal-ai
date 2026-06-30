@@ -91,10 +91,20 @@ number, not a guess.
 
 ## How you work the change
 
-Everything below — briefing Execution, watching it, steering it mid-task,
-reading it back — happens through a tmux pane. `tmux-workers` is the mechanics
-(`launch-agent.sh`, `send-keys-then-enter.sh`, `wait-for.sh`, `capture-pane`);
-load it. This section is the judgement, not the keystrokes.
+Briefing Execution, watching it, steering it mid-task, reading it back — the
+**judgement** below is the same whoever Execution is; the **transport** depends
+on who it is. A **Claude** Execution agent — the default when you are the MC and
+Ben asks you to spawn Claude executors — is driven with native subagent tooling:
+`Agent` to spawn (`run_in_background: true`, `isolation: "worktree"` for repo
+work), `SendMessage` to brief, steer, continue, and resume it by name or
+agentId, and the task-completion notification to know when a turn lands. A
+**cross-harness peer** (Pi, Codex — not a native subagent), or any executor Ben
+wants on a **shared pane he can open and type into**, is driven through tmux;
+`tmux-workers` is that mechanics (`launch-agent.sh`, `send-keys-then-enter.sh`,
+`wait-for.sh`, `capture-pane`). Native is smoother — no submit round-trips, no
+stale-pane polling, completion comes to you; tmux buys the shared/inspectable
+surface and cross-harness reach, at the cost of that friction. This section is
+the judgement, not the keystrokes.
 
 ### Trust the worker — let it cook
 
@@ -108,22 +118,16 @@ wrong mode. (See `consulting-other-agents` Failure 3, and core Principle #4.)
 
 ### Watch Execution asynchronously — not by hovering, not by blocking
 
-You still need to know the instant Execution finishes a turn. The answer is an
-**async listener**: put `wait-for.sh <agent> <pane>` on Execution's pane under
-the Monitor tool (see `tmux-workers` for the Monitor / background-job
-mechanics). It runs outside your context and wakes you when Execution goes
-idle — then you verify, review, and send the next brief. While it runs, do
-your own work. Trade pane ids when you pair up: you need Execution's pane to
-watch it and to steer it.
-
-You drive this from your side: you watch Execution, and you reach it by sending
-into its pane with `send-keys-then-enter.sh` — that input is its wake. Execution
-can watch you back, too: **Pi** has async monitor tooling (a Pi extension
-modelled on Claude's Monitor), so a Pi-Execution can run its own standing
-listener on your pane; a **Codex**-Execution is a synchronous REPL and cannot —
-it only gets pushed to. Either way, **push to Execution** rather than assume it
-noticed — a push always lands; a listen-back is a bonus. (See `tmux-workers`
-for the send / capture / wait helpers.)
+You still need to know the instant Execution finishes a turn — without sitting
+on it. For a **Claude** executor this is built in: spawn it `run_in_background`
+and its task-completion notification wakes you when the turn lands; `SendMessage`
+both delivers the next brief and is its wake — no listener to wire. For a
+**tmux** executor, put an async listener on its pane (`wait-for.sh <agent>
+<pane>` under the Monitor tool, or an edge-triggered Monitor loop) and reach it
+by sending into the pane with `send-keys-then-enter.sh`; trade pane ids when you
+pair up. Either way: while you wait, do your own work — not "still waiting"
+turns — and **push the next brief rather than assume Execution noticed**; a push
+always lands. (For the tmux send / capture / wait helpers, see `tmux-workers`.)
 
 ### A periodic liveness backstop — behind the listeners
 
@@ -135,9 +139,10 @@ behind the listeners: a recurring self-wakeup (`/loop` with an interval,
 
 Keep it a **backstop, not the engine.** The listeners do the fast event work;
 this only sweeps for stalls *between* events, so the interval is long —
-20-30 minutes, a heartbeat, not a metronome. Each tick: capture Execution's
-pane and the reviewers, check nothing has fallen off the North Star, and nudge
-anything stalled (a `send-keys` "status? keep going" into a frozen pane).
+20-30 minutes, a heartbeat, not a metronome. Each tick: check on Execution and
+the reviewers (a background agent whose completion never arrived, or a frozen
+tmux pane), confirm nothing has fallen off the North Star, and nudge anything
+stalled — a `SendMessage` (or `send-keys`) "status? keep going".
 
 **Terminate on convergence — and make convergence crisp.** The loop stops when
 the acceptance contract is met and an independent reviewer has no valid
@@ -254,12 +259,15 @@ The principles above (Pi-first, Socratic briefing, code-path map, question the c
 
 7. **Weigh each finding against the project's stated philosophy before relaying.** Reviewers can drift into generic priors that contradict explicit project invariants (the canonical example: a reviewer flagging "this over-logs" against a project whose `CLAUDE.md` explicitly says "log generously, no silent failures"). Read the project's `CLAUDE.md` / `AGENTS.md` / equivalent BEFORE synthesizing review findings, and drop or push back on findings that contradict explicit project rules. Reviewers can be wrong; the project's stated rules win. Make the project's philosophy part of the brief context too — points reviewers at the file rather than relying on them to find it. The specific over-log/under-log example aside, the general principle: project rules trump reviewer priors during synthesis.
 
-### Keep the thread alive outside your context
+### Keep the thread recoverable outside your context
 
 Context compacts; Ben steps away; agents get resumed. None of that can drop the
-thread. Keep a live working log and durable notes of every decision as you go
-(see `write-engineering-logs`). The test: if your context were wiped right now,
-could a fresh agent pick up from your written state alone? If not, write more.
+thread. Keep the North Star, acceptance contract, current status, commit graph,
+and agent-visible coordination messages clear enough that `read-agent-sessions`
+can recover the thread later. Write a separate curated manual note only when Ben
+explicitly asks or when a decision happened outside the transcript. The test: if
+your context were wiped right now, could a fresh agent recover from the session
+history plus repo state? If not, make the state clearer in-channel.
 
 ### Forward motion; escalate only real blockers
 

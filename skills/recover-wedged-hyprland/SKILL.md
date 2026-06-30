@@ -208,9 +208,9 @@ A few things you'll be tempted to try; here's why they don't work in this exact 
 
 If Ben's box is *also* thrashing zram (you'll see ~50+ GiB used, load >5, multiple multi-GB JVMs), that's worth flagging — but treat it as a separate problem from the wedge. The session-restart procedure above is correct regardless. Don't conflate the two: Ben has explicitly pushed back on "it's the RAM" theories when the actual cause was the compositor bug.
 
-## Logging this for future you
+## Preserve anything genuinely new
 
 After a successful recovery, consider whether to:
 
-- Append a one-line incident note to today's engineering log via `write-engineering-logs` (timestamp, wedge signature confirmed, actions taken).
+- Leave a concise in-session recovery note if the key evidence/actions were not already obvious from the transcript.
 - Update `~/.claude/projects/-home-benjude/memory/` if a *new* failure mode surfaces — the existing aquamarine signature is already well-documented in this skill so doesn't need its own memory file.

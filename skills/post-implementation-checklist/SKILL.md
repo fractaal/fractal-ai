@@ -66,38 +66,23 @@ If a function only appears at its definition and in its test file, it's dead cod
 
 ## Phase 3: Multi-Dimensional Code Review
 
-Spawn MULTIPLE code review agents IN PARALLEL, each with a DIFFERENT mandate. A single reviewer checking one dimension found clean architecture around a broken feature. That must never happen again.
+Spawn ONE isolated code-review agent by default. The old three-reviewer pattern was useful when review budget was effectively unlimited; it is no longer the default. One strong reviewer is expected to carry all three lenses below in a single pass.
 
-### Reviewer 1: Architecture
+### Single Reviewer Mandate
 
-Dispatch the `code-reviewer` skill in an isolated subagent. It checks:
-- Layering violations, import cycles, kernel policy leaks
-- Naming that lies about structure
-- Defensive handler pileups
-- "This whole approach is wrong" moments
+Dispatch the `code-reviewer` skill in an isolated subagent with this mandate:
 
-### Reviewer 2: Functional Completeness
+> "Review this diff with three lenses in one pass:
+>
+> 1. Architecture: layering violations, import cycles, naming that lies about structure, defensive handler pileups, and 'this whole approach is wrong' moments.
+> 2. Functional completeness: verify that every feature in this diff actually works end-to-end. Trace the user action through every function call to the final system output. Check for methods that nothing calls, providers/API keys/config that are not wired, silent fallbacks, and notifications that claim something the system can't deliver.
+> 3. Regression / cross-service contracts: check that this diff doesn't break existing behavior. If it touches shared data structures, Firestore fields, NFS transcript records, HTTP payloads, environment variables, or service contracts, verify existing readers/writers still get what they expect.
+>
+> If any feature is implemented but unwired, or any contract change breaks an existing path, that is BLOCKING."
 
-Spawn a SEPARATE subagent (NOT the architecture reviewer) with this specific mandate:
+### When to add more reviewers
 
-> "Verify that every feature in this diff ACTUALLY WORKS end-to-end. For each feature: trace the user action through every function call to the final system output. Check for: aliases that map to unservable capabilities, methods that nothing calls, providers that aren't wired, config that isn't plumbed to the code that reads it, notifications that claim something the system can't deliver. If you find a feature that is 'implemented' but has an unwired dependency, that is a BLOCKING finding."
-
-This is the reviewer that would have caught the OpenRouter failure. It doesn't care about architecture — it cares about "does this actually work."
-
-### Reviewer 3: Regression / Cross-Service Contracts
-
-Spawn a THIRD subagent:
-
-> "Check that this diff doesn't break anything that already works. Specifically: Firestore fields that other services read (gateway, dashboard, scheduler) — were any removed or renamed? API contracts between services — were any request/response shapes changed? Environment variables or secrets — were any removed that other code paths depend on? If the diff touches a shared data structure, verify every reader still gets what it expects."
-
-### Why three reviewers
-
-Each reviewer has a different failure mode they catch:
-- Architecture catches "this is structured wrong"
-- Functional completeness catches "this doesn't actually work"
-- Regression catches "this breaks something else"
-
-One reviewer checking all three does a shallow job on each. Three reviewers each going deep on one dimension is how you catch the thing that ships broken.
+Do NOT spawn multiple reviewers by habit. Add a second reviewer only when there is a clear reason: very high-risk production change, unfamiliar security/infra surface, unusually broad cross-service migration, or explicit user request. If cost or latency matters, one reviewer is enough.
 
 ---
 
@@ -152,7 +137,7 @@ For every HTTP endpoint or payload you changed:
 
 After completing all phases, state your confidence level honestly:
 
-- **"The feature works end-to-end. I traced it. I verified the dependencies. I read the subagent code. All three reviewers are clean."** → You can say done.
+- **"The feature works end-to-end. I traced it. I verified the dependencies. I read the subagent code. The isolated reviewer is clean."** → You can say done.
 - **"Tests pass and architecture looks clean, but I haven't traced the end-to-end path for [specific feature]."** → You are NOT done. Go trace it.
 - **"I'm not sure if [dependency/provider/config] is actually wired."** → You are NOT done. Go check.
 - **"The subagent said it's done and I trust the summary."** → You are NOT done. You haven't verified. Go read the code.

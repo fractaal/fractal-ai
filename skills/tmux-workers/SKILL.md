@@ -1,28 +1,33 @@
 ---
 name: tmux-workers
 description: >-
-  Spawn an agent CLI (Pi, Codex, a peer Claude) into a live tmux window, brief
-  it, steer it with send-keys, and block on it until it goes idle — all
-  interactively. The window is a SHARED SURFACE: you drive it, and the human
-  can open the same window and type into it too. Use this whenever you run a
-  peer agent as a sustained worker — an implementer, a reviewer, an
-  investigator — across many briefs and follow-ups. Ships helper scripts:
-  launch-agent.sh, send-keys-then-enter.sh, wait-for-text.sh, wait-for.sh.
-  Non-interactive shell/headless workers are the appendix here, not the
-  headline.
-  Keyword triggers: "spawn an agent", "run Pi in a pane", "run Codex in a
-  pane", "peer agent", "tmux pane", "drive an agent", "wait for the agent",
-  "block on the agent", "interactive agent worker", "agent in a window",
-  "steer the agent".
+  Drive a cross-harness agent CLI (Pi, Codex) — or any executor you want on a
+  SHARED pane the human can also open and type into — inside a live tmux window:
+  launch, brief, steer with send-keys, block until it goes idle, all
+  interactively. Use it for sustained workers (implementer, reviewer,
+  investigator) whose harness is NOT a native subagent, or when the shared
+  inspectable surface is the point. For a peer Claude under a Claude
+  orchestrator, drive it with native Agent/SendMessage subagent tooling instead
+  — reach here only for non-native harnesses (Pi, Codex) or the shared-pane
+  case. Ships helper scripts: launch-agent.sh, send-keys-then-enter.sh,
+  wait-for-text.sh, wait-for.sh. Non-interactive shell/headless workers are the
+  appendix here, not the headline.
+  Keyword triggers: "run Pi in a pane", "run Codex in a pane", "tmux pane",
+  "shared pane", "drive an agent", "wait for the agent", "block on the agent",
+  "interactive agent worker", "agent in a window", "steer the agent".
 ---
 
 # tmux Workers
 
 ## What this is for
 
-You run a peer agent CLI — Pi, Codex, a peer Claude — as a **sustained worker**
+You run a **cross-harness** agent CLI — Pi or Codex — as a **sustained worker**
 inside a tmux window. You launch it, brief it, watch it, steer it mid-task,
-read its output, and hand it the next job — across a whole collaboration.
+read its output, and hand it the next job — across a whole collaboration. (A
+peer **Claude** under a Claude orchestrator is driven with native
+`Agent`/`SendMessage` subagent tooling instead — reach for tmux when the worker
+is not a native subagent, or when the human wants to open the same window and
+type into it.)
 
 The agent runs **interactively**, not headless, and that is the entire point:
 

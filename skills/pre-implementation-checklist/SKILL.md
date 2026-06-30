@@ -168,8 +168,8 @@ Verify your planned approach fits the system's architecture and prior decisions.
 
 ### Prior art check
 
-- Has this been attempted before? Check git history, engineering logs, scratchpads.
-- Is there a design spec or plan document? Check `docs/`, `.ai/`, engineering logs.
+- Has this been attempted before? Check git history and `read-agent-sessions` for prior agent work.
+- Is there a design spec or plan document? Check `docs/`, `.ai/`, project instructions, and relevant session history.
 - Did a previous session make decisions about this that you should honor?
 
 ### If anything is misaligned

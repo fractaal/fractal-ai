@@ -112,8 +112,10 @@ contradicts the brief, the code wins, and you say so. (See
 You may be paused, resumed, or running alongside others who need to see where
 you are. Commit each coherent unit of work as you finish it — do not let
 finished work sit uncommitted (in the real run, a whole round was left
-uncommitted and nearly lost). Keep your reasoning legible in durable form (see
-`write-engineering-logs`) so others can verify you *without interrupting you*.
+uncommitted and nearly lost). Keep the working state legible in the session,
+plan, and commits so `read-agent-sessions` can reconstruct the thread later;
+write a separate curated note only when Ben explicitly asks or the transcript
+will not capture the decision.
 
 ## In one line
 
