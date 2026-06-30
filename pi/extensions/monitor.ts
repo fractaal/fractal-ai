@@ -1,20 +1,23 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createInterface, type Interface as ReadlineInterface } from "node:readline";
+import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_BATCH_MS = 1000;
 const DEFAULT_MAX_LINES_PER_MESSAGE = 20;
 const DEFAULT_MAX_BUFFER_LINES = 500;
 const DEFAULT_MAX_LINE_BYTES = 4096;
+const DEFAULT_SUMMARY_TAIL_LINES = 50;
 const MAX_LINES_PER_DELIVERY_CYCLE = 64;
 const MAX_STATUS_TAIL_LINES = 7;
 const MAX_STATUS_TAIL_BYTES = 16 * 1024;
 const MAX_STATUS_TAIL_ENTRY_BYTES = 512;
 const MAX_INJECTED_LINE_BYTES = 1024;
-const MAX_INJECTED_OUTPUT_LINES_PER_MONITOR = 256;
-const MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR = 64 * 1024;
+const MAX_SUMMARY_TAIL_ENTRY_BYTES = 512;
+const MAX_SUMMARY_TAIL_LINES = 200;
 const MAX_METADATA_BYTES = 512;
 const MAX_DELIVERY_ERRORS = 5;
 const MAX_STATUS_RESPONSE_BYTES = 20 * 1024;
@@ -50,11 +53,22 @@ interface Monitor {
 	exitCode?: number | null;
 	signal?: NodeJS.Signals | null;
 	lineCount: number;
+	rawCapturedByteCount: number;
+	spooledByteCount: number;
 	injectedOutputLineCount: number;
 	injectedOutputByteCount: number;
-	droppedLineCount: number;
+	displayTruncatedLineCount: number;
 	lines: LineEntry[];
 	pending: string[];
+	pendingLineCount: number;
+	pendingByteCount: number;
+	pendingSummaryReason?: string;
+	summaryEmissionCount: number;
+	lastSummaryAt?: string;
+	lastSummaryReason?: string;
+	logWriteErrorCount: number;
+	firstLogWriteErrorAt?: string;
+	lastLogWriteError?: string;
 	deliveryErrors: LineEntry[];
 	recentLineTimes: number[];
 	injectionPaused: boolean;
@@ -67,6 +81,12 @@ interface Monitor {
 	maxLinesPerMessage: number;
 	maxBufferLines: number;
 	maxLineBytes: number;
+	summaryTailLines: number;
+	logDir: string;
+	combinedLogPath: string;
+	stdoutLogPath: string;
+	stderrLogPath: string;
+	metadataPath: string;
 	process: ChildProcessWithoutNullStreams;
 	stdoutReader?: ReadlineInterface;
 	stderrReader?: ReadlineInterface;
@@ -126,6 +146,122 @@ function displayText(text: string, maxBytes = MAX_METADATA_BYTES) {
 	return truncateUtf8Line(text, maxBytes).line;
 }
 
+function formatBytes(bytes: number) {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function createMonitorLogFiles(id: string) {
+	const logDir = mkdtempSync(path.join(tmpdir(), `pi-monitor-${id}-`));
+	const combinedLogPath = path.join(logDir, "combined.log");
+	const stdoutLogPath = path.join(logDir, "stdout.log");
+	const stderrLogPath = path.join(logDir, "stderr.log");
+	const metadataPath = path.join(logDir, "meta.json");
+	writeFileSync(combinedLogPath, "", { flag: "wx" });
+	writeFileSync(stdoutLogPath, "", { flag: "wx" });
+	writeFileSync(stderrLogPath, "", { flag: "wx" });
+	return {
+		logDir,
+		combinedLogPath,
+		stdoutLogPath,
+		stderrLogPath,
+		metadataPath,
+	};
+}
+
+function closeMonitorLogFiles(_monitor: Monitor) {
+	// Log files are written synchronously so output is immediately available to read.
+}
+
+function pushDeliveryError(monitor: Monitor, entry: LineEntry) {
+	monitor.deliveryErrors.push(entry);
+	if (monitor.deliveryErrors.length > MAX_DELIVERY_ERRORS) monitor.deliveryErrors.shift();
+}
+
+function recordLogWriteError(monitor: Monitor, time: string, target: string, error: unknown) {
+	const message = error instanceof Error ? error.message : String(error);
+	monitor.logWriteErrorCount += 1;
+	monitor.firstLogWriteErrorAt = monitor.firstLogWriteErrorAt ?? time;
+	monitor.lastLogWriteError = `${target}: ${message}`;
+	pushDeliveryError(monitor, {
+		time,
+		stream: "monitor",
+		line: `failed to write ${target}: ${message}`,
+	});
+}
+
+function monitorMetadata(monitor: Monitor) {
+	return {
+		id: monitor.id,
+		name: displayText(monitor.name),
+		command: displayText(monitor.command),
+		cwd: displayText(monitor.cwd),
+		status: monitor.status,
+		pid: monitor.process.pid,
+		startedAt: monitor.startedAt,
+		exitedAt: monitor.exitedAt,
+		exitCode: monitor.exitCode,
+		signal: monitor.signal,
+		lineCount: monitor.lineCount,
+		rawCapturedByteCount: monitor.rawCapturedByteCount,
+		spooledByteCount: monitor.spooledByteCount,
+		summaryEmissionCount: monitor.summaryEmissionCount,
+		lastSummaryAt: monitor.lastSummaryAt,
+		lastSummaryReason: monitor.lastSummaryReason,
+		logWriteErrorCount: monitor.logWriteErrorCount,
+		firstLogWriteErrorAt: monitor.firstLogWriteErrorAt,
+		lastLogWriteError: monitor.lastLogWriteError,
+		logDir: monitor.logDir,
+		combinedLogPath: monitor.combinedLogPath,
+		stdoutLogPath: monitor.stdoutLogPath,
+		stderrLogPath: monitor.stderrLogPath,
+		metadataPath: monitor.metadataPath,
+	};
+}
+
+function writeMonitorMetadata(monitor: Monitor) {
+	try {
+		writeFileSync(monitor.metadataPath, `${JSON.stringify(monitorMetadata(monitor), null, 2)}\n`, "utf8");
+	} catch (error) {
+		pushDeliveryError(monitor, {
+			time: new Date().toISOString(),
+			stream: "monitor",
+			line: `failed to write monitor metadata: ${error instanceof Error ? error.message : String(error)}`,
+		});
+	}
+}
+
+function spoolLine(monitor: Monitor, time: string, stream: MonitorStream, rawLine: string) {
+	const rawLineWithNewline = `${rawLine}\n`;
+	const combinedLine = `${time} [${stream}] ${rawLine}\n`;
+	monitor.rawCapturedByteCount += Buffer.byteLength(rawLineWithNewline, "utf8");
+
+	try {
+		appendFileSync(monitor.combinedLogPath, combinedLine, "utf8");
+		monitor.spooledByteCount += Buffer.byteLength(combinedLine, "utf8");
+	} catch (error) {
+		recordLogWriteError(monitor, time, monitor.combinedLogPath, error);
+	}
+
+	if (stream === "stdout") {
+		try {
+			appendFileSync(monitor.stdoutLogPath, rawLineWithNewline, "utf8");
+			monitor.spooledByteCount += Buffer.byteLength(rawLineWithNewline, "utf8");
+		} catch (error) {
+			recordLogWriteError(monitor, time, monitor.stdoutLogPath, error);
+		}
+	}
+	if (stream === "stderr") {
+		try {
+			appendFileSync(monitor.stderrLogPath, rawLineWithNewline, "utf8");
+			monitor.spooledByteCount += Buffer.byteLength(rawLineWithNewline, "utf8");
+		} catch (error) {
+			recordLogWriteError(monitor, time, monitor.stderrLogPath, error);
+		}
+	}
+}
+
 function pushTail(monitor: Monitor, entry: LineEntry) {
 	monitor.lines.push(entry);
 	if (monitor.lines.length > monitor.maxBufferLines) {
@@ -135,6 +271,9 @@ function pushTail(monitor: Monitor, entry: LineEntry) {
 
 function sendDeferredMessage(pi: ExtensionAPI, monitor: Monitor, text: string) {
 	if (monitor.shutdown) return;
+
+	monitor.injectedOutputLineCount += text.split("\n").length;
+	monitor.injectedOutputByteCount += Buffer.byteLength(text, "utf8");
 
 	try {
 		pi.sendMessage(
@@ -153,7 +292,7 @@ function sendDeferredMessage(pi: ExtensionAPI, monitor: Monitor, text: string) {
 			{ deliverAs: "steer", triggerTurn: true },
 		);
 	} catch (error) {
-		monitor.deliveryErrors.push({
+		pushDeliveryError(monitor, {
 			time: new Date().toISOString(),
 			stream: "monitor",
 			line: error instanceof Error ? error.message : String(error),
@@ -161,33 +300,10 @@ function sendDeferredMessage(pi: ExtensionAPI, monitor: Monitor, text: string) {
 	}
 }
 
-function pauseInjectionForGuardrail(pi: ExtensionAPI, monitor: Monitor, reason: string) {
-	if (monitor.injectionPaused || monitor.shutdown) return;
-
-	const triggeredAt = new Date().toISOString();
-	monitor.injectionPaused = true;
-	monitor.guardrailTriggeredAt = triggeredAt;
+function markPendingSummary(monitor: Monitor, reason: string) {
+	if (!monitor.pendingSummaryReason) monitor.pendingSummaryReason = reason;
+	monitor.guardrailTriggeredAt = monitor.guardrailTriggeredAt ?? new Date().toISOString();
 	monitor.guardrailReason = reason;
-	const monitorPending = monitor.pending.filter((line) => line.startsWith("[monitor] "));
-	const droppedPending = monitor.pending.length - monitorPending.length;
-	monitor.pending = [];
-	if (monitor.flushTimer) clearTimeout(monitor.flushTimer);
-	monitor.flushTimer = undefined;
-
-	const warning = [
-		`⚠️ Monitor guardrail paused injected output for ${displayText(monitor.name)} (${monitor.id}).`,
-		reason,
-		"Monitors should inject sparse, high-signal events. If you are watching a chatty source, re-run this monitor with the command filtered for the signal you care about — pipe through grep, or wrap the tail in a small script that emits one compact line per meaningful event — instead of streaming raw output.",
-		"The process is still running and its bounded tail buffer is still retained.",
-		`Use monitor_status with id=${monitor.id} to inspect recent output, or monitor_stop if this monitor is no longer useful.`,
-		`Dropped ${droppedPending} queued injected line${droppedPending === 1 ? "" : "s"} to protect session context.`,
-	].join("\n");
-
-	pushTail(monitor, { time: triggeredAt, stream: "monitor", line: warning });
-	sendDeferredMessage(pi, monitor, warning);
-	for (const line of monitorPending) {
-		sendDeferredMessage(pi, monitor, line);
-	}
 }
 
 function pruneRecentLineTimes(monitor: Monitor, now = Date.now()) {
@@ -197,35 +313,14 @@ function pruneRecentLineTimes(monitor: Monitor, now = Date.now()) {
 	}
 }
 
-function recordOutputRate(pi: ExtensionAPI, monitor: Monitor, now: number) {
+function recordOutputRate(monitor: Monitor, now: number) {
 	monitor.recentLineTimes.push(now);
 	pruneRecentLineTimes(monitor, now);
 
-	if (monitor.inject && !monitor.injectionPaused && monitor.recentLineTimes.length > MAX_LINES_PER_SECOND) {
-		pauseInjectionForGuardrail(
-			pi,
+	if (monitor.inject && monitor.recentLineTimes.length > MAX_LINES_PER_SECOND) {
+		markPendingSummary(
 			monitor,
-			`Output exceeded ${MAX_LINES_PER_SECOND} lines in ${RATE_WINDOW_MS / 1000} second (${monitor.recentLineTimes.length} lines observed).`,
-		);
-	}
-}
-
-function recordInjectedOutputBudget(pi: ExtensionAPI, monitor: Monitor, injectedLine: string) {
-	monitor.injectedOutputLineCount += 1;
-	monitor.injectedOutputByteCount += Buffer.byteLength(injectedLine, "utf8") + 1;
-	if (monitor.injectedOutputByteCount > MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR) {
-		pauseInjectionForGuardrail(
-			pi,
-			monitor,
-			`Injected output exceeded ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} bytes for this monitor. Filter the monitored command for the signal you care about (e.g. pipe through grep, or a wrapper script emitting one line per event) so it injects a sparse stream rather than a raw firehose.`,
-		);
-		return;
-	}
-	if (monitor.injectedOutputLineCount > MAX_INJECTED_OUTPUT_LINES_PER_MONITOR) {
-		pauseInjectionForGuardrail(
-			pi,
-			monitor,
-			`Injected output exceeded ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} stdout/stderr lines for this monitor. Filter the monitored command for the signal you care about (e.g. pipe through grep, or a wrapper script emitting one line per event) so it injects a sparse stream rather than a raw firehose.`,
+			`output exceeded ${MAX_LINES_PER_SECOND} lines in ${RATE_WINDOW_MS / 1000} second (${monitor.recentLineTimes.length} lines observed)`,
 		);
 	}
 }
@@ -235,6 +330,90 @@ function buildMonitorHeading(monitor: Monitor, lineCount: number) {
 		`Monitor ${displayText(monitor.name)} (${monitor.id}) produced ${lineCount} line${lineCount === 1 ? "" : "s"}.`,
 		"",
 	].join("\n");
+}
+
+function rememberPendingLine(monitor: Monitor, injectedLine: string) {
+	monitor.pendingLineCount += 1;
+	monitor.pendingByteCount += Buffer.byteLength(injectedLine, "utf8") + 1;
+	monitor.pending.push(injectedLine);
+
+	if (monitor.pendingLineCount > MAX_LINES_PER_DELIVERY_CYCLE) {
+		markPendingSummary(
+			monitor,
+			`emission exceeded the ${MAX_LINES_PER_DELIVERY_CYCLE}-line direct-injection cap`,
+		);
+	}
+	if (monitor.pendingByteCount > MAX_DEFERRED_MESSAGE_BYTES) {
+		markPendingSummary(
+			monitor,
+			`emission exceeded the ${formatBytes(MAX_DEFERRED_MESSAGE_BYTES)} direct-injection byte cap`,
+		);
+	}
+
+	const retainedLimit = monitor.pendingSummaryReason
+		? monitor.summaryTailLines
+		: Math.max(MAX_LINES_PER_DELIVERY_CYCLE, monitor.summaryTailLines);
+	if (monitor.pending.length > retainedLimit) {
+		monitor.pending.splice(0, monitor.pending.length - retainedLimit);
+	}
+}
+
+function resetPendingEmission(monitor: Monitor) {
+	monitor.pending = [];
+	monitor.pendingLineCount = 0;
+	monitor.pendingByteCount = 0;
+	monitor.pendingSummaryReason = undefined;
+	monitor.guardrailTriggeredAt = undefined;
+	monitor.guardrailReason = undefined;
+}
+
+function shouldSummarizePending(monitor: Monitor) {
+	return Boolean(monitor.pendingSummaryReason) || monitor.pendingLineCount !== monitor.pending.length;
+}
+
+function logPathLines(monitor: Monitor) {
+	return [
+		`Full output: ${monitor.combinedLogPath}`,
+		`stdout: ${monitor.stdoutLogPath}`,
+		`stderr: ${monitor.stderrLogPath}`,
+		`metadata: ${monitor.metadataPath}`,
+	];
+}
+
+function buildSummaryMessage(monitor: Monitor) {
+	const totalLines = monitor.pendingLineCount;
+	const reason = monitor.pendingSummaryReason ?? "emission was summarized to keep session context bounded";
+	let tail = monitor.pending
+		.slice(-monitor.summaryTailLines)
+		.map((line) => truncateUtf8Line(line, MAX_SUMMARY_TAIL_ENTRY_BYTES).line);
+	let omittedForMessageBytes = 0;
+
+	const render = () => {
+		const tailIntro = tail.length > 0
+			? `Most recent ${tail.length} of ${totalLines} line${totalLines === 1 ? "" : "s"}:`
+			: `No tail lines included; read ${monitor.combinedLogPath} for output.`;
+		return [
+			`Monitor ${displayText(monitor.name)} (${monitor.id}) emitted ${totalLines} line${totalLines === 1 ? "" : "s"} since last update.`,
+			`Summary reason: ${reason}.`,
+			...logPathLines(monitor),
+			omittedForMessageBytes > 0
+				? `Tail reduced by ${omittedForMessageBytes} line${omittedForMessageBytes === 1 ? "" : "s"} to keep this monitor update bounded.`
+				: undefined,
+			"",
+			tailIntro,
+			...tail,
+		]
+			.filter((line): line is string => Boolean(line))
+			.join("\n");
+	};
+
+	let text = render();
+	while (Buffer.byteLength(text, "utf8") > MAX_DEFERRED_MESSAGE_BYTES && tail.length > 0) {
+		tail = tail.slice(1);
+		omittedForMessageBytes += 1;
+		text = render();
+	}
+	return text;
 }
 
 function takePendingLinesForMessage(monitor: Monitor) {
@@ -256,21 +435,28 @@ function flushPending(pi: ExtensionAPI, monitor: Monitor) {
 	monitor.flushTimer = undefined;
 
 	try {
-		if (!monitor.injectionPaused && monitor.pending.length > MAX_LINES_PER_DELIVERY_CYCLE) {
-			pauseInjectionForGuardrail(
-				pi,
-				monitor,
-				`A single delivery cycle queued ${monitor.pending.length} lines, above the ${MAX_LINES_PER_DELIVERY_CYCLE}-line guardrail.`,
-			);
+		if (monitor.shutdown || monitor.pendingLineCount === 0) return;
+
+		if (shouldSummarizePending(monitor)) {
+			const text = buildSummaryMessage(monitor);
+			monitor.summaryEmissionCount += 1;
+			monitor.lastSummaryAt = new Date().toISOString();
+			monitor.lastSummaryReason = monitor.pendingSummaryReason ?? "emission summarized";
+			sendDeferredMessage(pi, monitor, text);
+			writeMonitorMetadata(monitor);
+			resetPendingEmission(monitor);
 			return;
 		}
 
-		while (!monitor.shutdown && !monitor.injectionPaused && monitor.pending.length > 0) {
+		while (!monitor.shutdown && monitor.pending.length > 0) {
 			const lines = takePendingLinesForMessage(monitor);
+			if (lines.length === 0) break;
 			const heading = buildMonitorHeading(monitor, lines.length);
 
 			sendDeferredMessage(pi, monitor, `${heading}${lines.join("\n")}`);
 		}
+		writeMonitorMetadata(monitor);
+		resetPendingEmission(monitor);
 	} finally {
 		monitor.flushing = false;
 	}
@@ -289,11 +475,14 @@ function scheduleFlush(pi: ExtensionAPI, monitor: Monitor) {
 
 function enqueueLine(pi: ExtensionAPI, monitor: Monitor, stream: MonitorStream, rawLine: string) {
 	const now = Date.now();
+	const time = new Date().toISOString();
+	spoolLine(monitor, time, stream, rawLine);
+
 	const truncated = truncateUtf8Line(rawLine, monitor.maxLineBytes);
-	if (truncated.truncated) monitor.droppedLineCount += 1;
+	if (truncated.truncated) monitor.displayTruncatedLineCount += 1;
 
 	const entry: LineEntry = {
-		time: new Date().toISOString(),
+		time,
 		stream,
 		line: truncated.line,
 	};
@@ -304,16 +493,17 @@ function enqueueLine(pi: ExtensionAPI, monitor: Monitor, stream: MonitorStream, 
 	const injectedLine = `[${stream}] ${truncateUtf8Line(truncated.line, MAX_INJECTED_LINE_BYTES).line}`;
 
 	if (stream !== "monitor") {
-		recordOutputRate(pi, monitor, now);
-		if (monitor.inject && !monitor.injectionPaused) recordInjectedOutputBudget(pi, monitor, injectedLine);
+		recordOutputRate(monitor, now);
 	}
 
 	if (monitor.inject && !monitor.injectionPaused) {
-		monitor.pending.push(injectedLine);
+		rememberPendingLine(monitor, injectedLine);
 		scheduleFlush(pi, monitor);
 	} else if (monitor.inject && stream === "monitor") {
 		sendDeferredMessage(pi, monitor, `[monitor] ${truncated.line}`);
 	}
+
+	if (monitor.lineCount % 1000 === 0) writeMonitorMetadata(monitor);
 }
 
 function buildStatusTail(monitor: Monitor, maxEntries: number) {
@@ -349,14 +539,30 @@ function summarizeMonitor(monitor: Monitor, tail = 20) {
 		exitCode: monitor.exitCode,
 		signal: monitor.signal,
 		lineCount: monitor.lineCount,
+		rawCapturedByteCount: monitor.rawCapturedByteCount,
+		spooledByteCount: monitor.spooledByteCount,
 		injectedOutputLineCount: monitor.injectedOutputLineCount,
 		injectedOutputByteCount: monitor.injectedOutputByteCount,
-		droppedLineCount: monitor.droppedLineCount,
-		pendingLines: monitor.pending.length,
+		displayTruncatedLineCount: monitor.displayTruncatedLineCount,
+		pendingLines: monitor.pendingLineCount,
+		pendingRetainedTailLines: monitor.pending.length,
+		pendingByteCount: monitor.pendingByteCount,
+		pendingSummaryReason: monitor.pendingSummaryReason,
+		summaryEmissionCount: monitor.summaryEmissionCount,
+		lastSummaryAt: monitor.lastSummaryAt,
+		lastSummaryReason: monitor.lastSummaryReason,
+		logWriteErrorCount: monitor.logWriteErrorCount,
+		firstLogWriteErrorAt: monitor.firstLogWriteErrorAt,
+		lastLogWriteError: monitor.lastLogWriteError,
 		injectionPaused: monitor.injectionPaused,
 		guardrailTriggeredAt: monitor.guardrailTriggeredAt,
 		guardrailReason: monitor.guardrailReason,
 		recentLinesPerSecond: monitor.recentLineTimes.length,
+		logDir: monitor.logDir,
+		combinedLogPath: monitor.combinedLogPath,
+		stdoutLogPath: monitor.stdoutLogPath,
+		stderrLogPath: monitor.stderrLogPath,
+		metadataPath: monitor.metadataPath,
 		deliveryErrors: monitor.deliveryErrors.slice(-MAX_DELIVERY_ERRORS).map((entry) => ({
 			...entry,
 			line: displayText(entry.line),
@@ -429,6 +635,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			if (monitor.flushTimer) clearTimeout(monitor.flushTimer);
 			monitor.stdoutReader?.close();
 			monitor.stderrReader?.close();
+			writeMonitorMetadata(monitor);
+			closeMonitorLogFiles(monitor);
 			if (monitor.status === "running") {
 				monitor.stopRequested = true;
 				try {
@@ -451,15 +659,15 @@ export default function monitorExtension(pi: ExtensionAPI) {
 		name: "monitor_start",
 		label: "Monitor Start",
 		description:
-			"Start an intentionally long-running shell command in the background and stream sparse, meaningful stdout/stderr events back into this Pi session over time. Use for dev servers, watch-mode tests, persistent services, and long-running logs (tail -f, journalctl -f, docker/kubectl logs, deployment logs). Logs are usually chatty: filter the command for the signal you care about rather than streaming it raw — pipe through grep, or for a busy source point monitor_start at a small wrapper script that tails the source and emits one compact line per meaningful event. Stream a source unfiltered only when it is already naturally sparse, which is uncommon. Do not use for ordinary one-shot commands that should finish; use bash for those. Output is batched, line-limited, guarded, and retained as a tail buffer.",
+			"Start an intentionally long-running shell command in the background, capture its full stdout/stderr to log files, and stream bounded updates back into this Pi session over time. Use for dev servers, watch-mode tests, persistent services, and long-running logs (tail -f, journalctl -f, docker/kubectl logs, deployment logs). Logs are usually chatty: filter the command for the signal you care about rather than streaming it raw — pipe through grep, or for a busy source point monitor_start at a small wrapper script that tails the source and emits one compact line per meaningful event. Stream a source unfiltered only when it is already naturally sparse, which is uncommon. Do not use for ordinary one-shot commands that should finish; use bash for those. Output injection is batched and bounded per emission; full-fidelity output is retained in log files that can be inspected with read or searched with bash/rg.",
 		promptSnippet:
 			"Start an intentionally long-running background command — a dev server, watch test, or a filtered/scripted log stream — and stream sparse, meaningful events asynchronously; not for one-shot commands.",
 		promptGuidelines: [
-			"Use bash, not monitor_start, for ordinary one-shot commands expected to finish, including ls, rg/grep/find, git status/diff, builds, linters, formatters, migrations, scripts, and non-watch tests; give bash an appropriate timeout if needed.",
+			"Use bash, not monitor_start, for ordinary one-shot commands expected to finish, including ls, rg/grep/find, git status/diff, builds, linters, formatters, migrations, scripts, and non-watch tests; use bash.background_after_seconds for foreground responsiveness and bash.kill_after_seconds only for an explicit hard kill deadline.",
 			"Use monitor_start for intentionally long-running work whose output is watched over time or stopped later: dev servers, watch-mode tests, persistent services, and long-running logs (tail -f, journalctl -f, docker/kubectl logs, deployment logs).",
 			"Logs and other chatty sources should be filtered for signal, not streamed raw. For a simple case, pipe the command through grep. For a busy source, point monitor_start at a small wrapper script that tails the source, matches only the events that matter, and emits one compact, self-contained line per event — a short TYPE prefix per line lets the reader route by event class. Aim for one emitted line per meaningful event. Stream a source unfiltered only when it is already naturally sparse, which is uncommon for real logs.",
 			"Do not use monitor_start merely because a command may take a while; if final output or exit status matters, use bash.",
-			`Injected output is guardrailed: more than ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines in one delivery cycle, more than ${MAX_LINES_PER_SECOND} lines/second, more than ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} total stdout/stderr lines, or more than ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} injected bytes pauses injection and emits a warning — filter the command at the source to stay under these.`,
+			`monitor_start writes full output to per-monitor log files. Automatic injection is bounded per emission: if an update exceeds ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines, ${formatBytes(MAX_DEFERRED_MESSAGE_BYTES)}, or ${MAX_LINES_PER_SECOND} lines/second, Pi injects a summary with log paths and the most recent retained tail instead of pausing the monitor indefinitely. Use read on the combined/stdout/stderr log paths for full output, or bash/rg to search them.`,
 			"Use monitor_status or monitor_list to inspect monitors created by monitor_start, and use monitor_stop when a running monitor is no longer needed.",
 		],
 		parameters: objectSchema(
@@ -469,9 +677,10 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				name: stringSchema("Human-readable monitor name."),
 				inject: booleanSchema("Whether output should be queued back into the session. Defaults to true."),
 				batchMs: numberSchema("Milliseconds to batch lines before delivery. Use 0 for per-line delivery. Defaults to 1000."),
-				maxLinesPerMessage: numberSchema("Maximum output lines per monitor message. Defaults to 20; capped at 64 by the sparse-output guardrail."),
-				maxBufferLines: numberSchema("Maximum lines retained for monitor_status tail output. Defaults to 500."),
-				maxLineBytes: numberSchema("Maximum bytes retained per output line before truncating. Defaults to 4096."),
+				maxLinesPerMessage: numberSchema("Maximum direct output lines per monitor message. Defaults to 20; capped at 64 by the sparse-output guardrail."),
+				maxBufferLines: numberSchema("Maximum lines retained in memory for monitor_status tail output. Defaults to 500. Full output is still written to log files."),
+				maxLineBytes: numberSchema("Maximum bytes retained per in-memory/display output line before truncating. Defaults to 4096. Full raw lines are still written to log files."),
+				summaryTailLines: numberSchema("Number of recent lines included when a monitor emission is summarized. Defaults to 50; capped at 200."),
 			},
 			["command"],
 		),
@@ -479,6 +688,7 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			rememberUi(ctx);
 			const id = randomUUID().slice(0, 8);
 			const cwd = resolveCwd(ctx.cwd, params.cwd);
+			const logs = createMonitorLogFiles(id);
 			const child = spawn("/bin/bash", ["-lc", params.command], {
 				cwd,
 				detached: true,
@@ -494,11 +704,17 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				status: "running",
 				startedAt: new Date().toISOString(),
 				lineCount: 0,
+				rawCapturedByteCount: 0,
+				spooledByteCount: 0,
 				injectedOutputLineCount: 0,
 				injectedOutputByteCount: 0,
-				droppedLineCount: 0,
+				displayTruncatedLineCount: 0,
 				lines: [],
 				pending: [],
+				pendingLineCount: 0,
+				pendingByteCount: 0,
+				summaryEmissionCount: 0,
+				logWriteErrorCount: 0,
 				deliveryErrors: [],
 				recentLineTimes: [],
 				injectionPaused: false,
@@ -508,12 +724,15 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				maxLinesPerMessage: clampNumber(params.maxLinesPerMessage, DEFAULT_MAX_LINES_PER_MESSAGE, 1, MAX_LINES_PER_DELIVERY_CYCLE),
 				maxBufferLines: clampNumber(params.maxBufferLines, DEFAULT_MAX_BUFFER_LINES, 1, 10_000),
 				maxLineBytes: clampNumber(params.maxLineBytes, DEFAULT_MAX_LINE_BYTES, 128, 64 * 1024),
+				summaryTailLines: clampNumber(params.summaryTailLines, DEFAULT_SUMMARY_TAIL_LINES, 1, MAX_SUMMARY_TAIL_LINES),
+				...logs,
 				process: child,
 				stopRequested: false,
 				shutdown: false,
 			};
 
 			monitors.set(id, monitor);
+			writeMonitorMetadata(monitor);
 			updateMonitorStatus(ctx);
 
 			monitor.stdoutReader = createInterface({ input: child.stdout });
@@ -526,6 +745,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				monitor.exitedAt = new Date().toISOString();
 				enqueueLine(pi, monitor, "monitor", `failed to start: ${error.message}`);
 				flushPending(pi, monitor);
+				writeMonitorMetadata(monitor);
+				closeMonitorLogFiles(monitor);
 				if (!monitor.shutdown) updateMonitorStatus(ctx);
 			});
 
@@ -538,6 +759,8 @@ export default function monitorExtension(pi: ExtensionAPI) {
 				monitor.signal = signal;
 				enqueueLine(pi, monitor, "monitor", `exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`);
 				flushPending(pi, monitor);
+				writeMonitorMetadata(monitor);
+				closeMonitorLogFiles(monitor);
 				if (!monitor.shutdown) updateMonitorStatus(ctx);
 			});
 
@@ -550,9 +773,13 @@ export default function monitorExtension(pi: ExtensionAPI) {
 							`PID: ${child.pid}`,
 							`CWD: ${displayText(cwd)}`,
 							`Deferred delivery: ${monitor.inject ? `enabled, batchMs=${monitor.batchMs}` : "disabled"}`,
-							`Guardrails: pause injection above ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines/delivery cycle, ${MAX_LINES_PER_SECOND} lines/second, ${MAX_INJECTED_OUTPUT_LINES_PER_MONITOR} total stdout/stderr lines, or ${MAX_INJECTED_OUTPUT_BYTES_PER_MONITOR} injected bytes.`,
-							`Line cap: ${monitor.maxLineBytes} bytes; status tail buffer: ${monitor.maxBufferLines} lines.`,
-							`Use monitor_status with id=${id} to inspect output, or monitor_stop to terminate it.`,
+							`Logs: combined=${monitor.combinedLogPath}`,
+							`stdout=${monitor.stdoutLogPath}`,
+							`stderr=${monitor.stderrLogPath}`,
+							`metadata=${monitor.metadataPath}`,
+							`Emission caps: direct updates summarize above ${MAX_LINES_PER_DELIVERY_CYCLE} queued lines, ${formatBytes(MAX_DEFERRED_MESSAGE_BYTES)}, or ${MAX_LINES_PER_SECOND} lines/second; summary tail=${monitor.summaryTailLines} lines.`,
+							`Display line cap: ${monitor.maxLineBytes} bytes; in-memory status tail buffer: ${monitor.maxBufferLines} lines. Full raw output remains in the log files.`,
+							`Use read on the log paths for full output, monitor_status with id=${id} for status, or monitor_stop to terminate it.`,
 						].join("\n"),
 					},
 				],
@@ -581,12 +808,13 @@ export default function monitorExtension(pi: ExtensionAPI) {
 			}
 
 			flushPending(pi, monitor);
+			writeMonitorMetadata(monitor);
 			const requestedTail = clampNumber(params.tail, 20, 0, 500);
 			const cappedTail = Math.min(requestedTail, MAX_STATUS_TAIL_LINES);
 			const statusTail = cappedTail > 0 ? buildStatusTail(monitor, cappedTail) : { tail: [], bytes: 0, omittedForByteCap: 0 };
 			const guardrailNotes = [
 				requestedTail > cappedTail
-					? `Requested ${requestedTail} tail lines; returned at most ${cappedTail}. monitor_status returns a capped recent tail, not a full log — filter the monitored command for the signal you care about, or redirect its full output to a file you can read separately.`
+					? `Requested ${requestedTail} tail lines; returned at most ${cappedTail}. monitor_status returns a capped recent tail, not a full log — read ${monitor.combinedLogPath} for complete combined output, or read stdout/stderr log paths for raw streams.`
 					: undefined,
 				statusTail.omittedForByteCap > 0
 					? `Omitted ${statusTail.omittedForByteCap} older tail entr${statusTail.omittedForByteCap === 1 ? "y" : "ies"} to keep status output under ${MAX_STATUS_TAIL_BYTES} bytes.`
