@@ -12,6 +12,7 @@ For those cases, Fractal applies small exact-match runtime patches to the instal
 
 - `pi-coding-agent-compaction-custom-message.diff`
 - `pi-coding-agent-indefinite-retries.diff`
+- `apply-pi-runtime-patches.mjs` also carries the compaction stop-the-world barrier patch.
 - Applicator: `apply-pi-runtime-patches.mjs`
 
 `pi-coding-agent-compaction-custom-message.diff` fixes Pi compaction cut-point
@@ -30,6 +31,14 @@ from 3 attempts to unbounded retries. Explicit finite `retry.maxRetries` setting
 still cap retries. The retry backoff is capped at 10 seconds, and unbounded
 `auto_retry_start` events report `maxAttempts: null` so interactive/RPC consumers
 do not render a misleading finite cap.
+
+The compaction stop-the-world barrier patch makes core compaction/retry a safepoint:
+when an assistant message is classified as context overflow, Pi snapshots that
+classification before extension hooks run, enters a barrier, defers extension-triggered
+turns/messages, ignores nested `ctx.compact()` requests, runs core compaction, retries
+when appropriate, and only then releases deferred extension traffic. This prevents goal
+or monitor/background extensions from racing the transcript compactor or masking the
+overflow before core can recover.
 
 The applicator is idempotent:
 
