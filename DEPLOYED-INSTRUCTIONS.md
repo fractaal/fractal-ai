@@ -114,6 +114,8 @@ Calling something "done" when it isn't is NOT a shortcut. It is a BETRAYAL of th
 
 Every line is a liability. Eliminate problems at the root instead of handling them downstream. Three similar lines beat a premature abstraction. Prefer something long BUT readable instead of something terse and arcane (long if-else statement vs a hard-to-read ternary -- ALWAYS prefer the if-else) If a working reference exists in the codebase, READ IT AND MATCH IT.
 
+**PROVE WHY THIS NEEDS TO EXIST.** Treat every feature, field, flag, type, abstraction, helper, dependency, service, migration, endpoint, metadata field, and line of code like an early NASA launch decision: the burden of proof is on launch, not on delay. Before building it, prove to Ben and to yourself why the simpler, more direct implementation is insufficient. Ask: "yo, what the hell is this for?" What user-visible or system-critical decision does it enable? What real failure does it prevent? What behavior becomes impossible without it? If the answer is vague, aesthetic, taxonomic, "for safety/UX" without a concrete path, or merely describes obvious facts, do not add it. Delete categories that restate each other. Delete fields whose values are implied by other fields. Delete wrappers that do not remove real complexity. Genuine engineering elegance is allowed when earned; unproven structure is waste.
+
 ## 4. DO NOT UNDERMINE OTHER AGENTS
 
 When working with other agents / subagents, brief them with THE ENTIRE STORY. Full system context, the architecture, what exists, what the feature needs to accomplish end-to-end. They should be empowered to flag integration gaps ("this won't work unless X is also changed").
@@ -166,12 +168,25 @@ When the event happens, you INVOKE THE SKILL. No exceptions. No "I'll do it late
 | Event | Skill | NON-NEGOTIABLE |
 |---|---|---|
 | 🚨 BEFORE writing code on any non-trivial task | `pre-implementation-checklist` | DO NOT WRITE A SINGLE LINE until you've run this. Research, verify dependencies, confirm design alignment, check what exists. This is where you CATCH wrong assumptions before they become wrong code. |
-| 🌿 BEFORE repo-changing work or spawning repo workers | `using-worktrees` | Work in a task-specific git worktree under `.worktrees/` by default. Do not let agents or parallel workers modify the primary checkout unless the skill's exceptions apply. |
+| 🌿 BEFORE repo-changing work or spawning repo workers | `using-worktrees` | **`git fetch` FIRST, then branch/worktree off `origin/main` (or the real upstream base) — NEVER off whatever your local checkout happens to be sitting at.** Work in a task-specific git worktree under `.worktrees/` by default. Do not let agents or parallel workers modify the primary checkout unless the skill's exceptions apply. |
 | 🚨 Implementation complete — BEFORE saying "done" | `post-implementation-checklist` | DO NOT TELL THE USER "DONE" WITHOUT RUNNING THIS. Multi-dimensional review + end-to-end verification. If this skill does not exist yet, you BUILD IT FIRST, then run it. |
-| 🎨 Frontend work | `frontend-design` | UI copy, aesthetics, conversation-context leakage. |
+| 🎨 Frontend work | `frontend-design-by-fractal` | Ben/Fractal UI discipline: hierarchy, aesthetic budget, product grammar, copy austerity. |
 | 📦 Committing changes | `git-commit-convention` | Standardized commit format and staging discipline. |
 
 If you skip `pre-implementation-checklist`, you WILL build on wrong assumptions. If you skip `post-implementation-checklist`, you WILL ship broken features. Both have happened. Both caused hours of wasted work and destroyed trust. THE USER DOES NOT GET THOSE HOURS BACK.
+
+## 🔄 SYNC TO LATEST BEFORE YOU TOUCH CODE — NON-NEGOTIABLE
+
+A local checkout is **stale until proven fresh.** Before ANY investigation, edit, audit, or branch/worktree creation: **`git fetch origin` and base your work on `origin/main`** (or the relevant upstream branch) — NOT on whatever commit your local `main`/working dir happens to be parked at. Check `git rev-list --count HEAD..origin/main`; if it's not 0, you are stale.
+
+This has burned us repeatedly and severely. The classic failure: do a full investigation + edits + commit against a local checkout that turns out to be **dozens or hundreds of commits behind** `origin/main`. Every line number, every "this string is here," every render-path trace is then against code that no longer exists. The push gets rejected as non-fast-forward, and you discover upstream already refactored the exact files — sometimes already reworded the exact strings — making the whole effort wrong and forcing a redo. Worse, if it *had* merged cleanly you'd have silently reverted 100 commits of other people's work.
+
+The rule:
+- **Read-only question about the code?** Still `git fetch` and read at `origin/main`, or at minimum state that your read is against a possibly-stale local tree.
+- **Any real work?** `git fetch`, then `git worktree add .worktrees/<task> -b <branch> origin/main`. Work there. Push the branch straight to its upstream (a clean fast-forward) — this never depends on, and never disturbs, the state of the primary checkout.
+- **Shared/NFS clones** (e.g. Aria's `/share/system/aria-repo`) are *especially* prone to being stale — they're nobody's active checkout. Treat "latest" as a claim to verify, never an assumption.
+
+*(Established 2026-06-08, Ben — after a full system-event audit + commit was done against a local `main` that was 95 commits behind `origin/main`; one edit targeted a string upstream had already reworded. Recurring mistake, not a one-off.)*
 
 # Context
 
@@ -191,9 +206,9 @@ The user runs three primary coding harnesses interchangeably — **Claude Code**
 
 **Before you invoke another agent, ALWAYS load the `consulting-other-agents` skill.** It exists because of two repeated failure modes: (1) piping the agent's stdout through `tail`/`head` causes the response to never appear due to buffering until EOF, and (2) framing the query in a way that pre-confirms your premise destroys the entire value of consultation. Both have cost real wasted hours. The skill enforces query craft and safe output capture. For long-running, parallel, or interactive multi-agent dispatch mechanics, also see `tmux-workers`.
 
-# Engineering Logs
+# Session Recall
 
-Use `write-engineering-logs` and `read-engineering-logs` skills actively — write live notes as you work, read past context when picking up familiar topics.
+Use `read-agent-sessions` as the default recall path for prior agent work across Claude, Pi, and Codex. It renders friendly session Markdown into the Obsidian/MindPalace corpus for search, so separate manual Scratchpad-style engineering logs are legacy/exceptional: write a curated note only when Ben explicitly asks for one or when the information will not be captured in the agent transcript.
 
 # Chrome DevTools
 
@@ -219,4 +234,5 @@ The user runs Claude, Codex, Gemini, and other agents. They are peers with diffe
 > advisories that affect how we work *right now*. When an advisory expires,
 > delete it. When the section is empty, leave it reading "None at this time."
 
-None at this time.
+Claude / Claude Code is currently unavailable at this time. Don't bother trying to spawn a Claude reviewer or Claude subagent. 2026-06-29
+For aria-chat/Symphony: Work primarily in the main worktree, even if the changes are dirty -- we're prioritizing velocity, so the more changes we lump and ship in bulk, the better. Do NOT spawn separate worktrees for aria-chat/Symphony/symph-aria work unless Ben specifically asks. JUST WARN LOUDLY THAT WE ARE WORKING IN ONE MAIN WORKTREE AS AN EXPLICIT NOTSWE EXCEPTION AGAINST USING WORKTREES GUIDANCE. Just commit frequently. 2026-06-29
