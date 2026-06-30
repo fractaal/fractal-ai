@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.75.4",
+  "lastChangelogVersion": "0.79.9",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "high",
@@ -15,5 +15,6 @@
   "packages": [
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a",
     "git:github.com/fractaal/pi-goal-x@9098a78f87ad5816c997f8ebc24451566e02ca74"
-  ]
+  ],
+  "theme": "dark"
 }
