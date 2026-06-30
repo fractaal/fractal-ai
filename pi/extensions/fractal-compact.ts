@@ -33,7 +33,7 @@ Respond with only the summary in the structure below. Do not acknowledge these i
    The way work is being done in this session. The resumed agent MUST keep using these same approaches rather than inventing new ones. Capture, with verbatim runnable detail wherever possible:
    - Exact commands / invocations that were used and worked — copy them so they can be re-run verbatim (build commands, search commands, monitors, one-liners, env exports, etc.). Include the precise flags.
    - Tools, scripts, monitors, or helpers created or adopted this session — where they live (paths) and exactly how they are invoked.
-   - Logging / note-taking conventions in use — which skill, which scratchpad path, what format.
+   - Session-continuity conventions in use — commands, scripts, status messages, handoff format, or \`read-agent-sessions\` lookups that matter going forward. Mention manual notes only if the user explicitly asked for them.
    - Output / response formats the user explicitly approved or asked for, and any style conventions observed (tone, structure, verbosity).
    - Verification rituals used — how "it works" was actually confirmed this session (which command, which check, what counted as proof).
    - Any approach the user blessed verbatim, and any constraint on HOW to work the user imposed. Quote these.

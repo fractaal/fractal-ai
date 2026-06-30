@@ -84,8 +84,9 @@ expected and encouraged.)
      one-liners, env exports, etc.). Include the precise flags.
    - Tools, scripts, monitors, or helpers created or adopted this session —
      where they live (paths) and exactly how they are invoked.
-   - Logging / note-taking conventions in use — which skill, which scratchpad
-     path, what format. (e.g. write-engineering-logs into Scratchpads/<file>.)
+   - Session-continuity conventions in use — which commands, scripts, status
+     messages, handoff format, or `read-agent-sessions` lookups matter going
+     forward. Mention manual notes only if the user explicitly asked for them.
    - Output / response formats the user explicitly approved or asked for, and
      any style conventions observed (tone, structure, verbosity).
    - Verification rituals used — how "it works" was actually confirmed this
