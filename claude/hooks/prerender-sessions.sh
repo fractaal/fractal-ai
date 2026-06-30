@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stop hook: refresh prerendered session Markdown files in the Obsidian vault
-# so /read-agent-sessions search stays current without manual re-runs.
+# Stop hook: refresh prerendered session Markdown files in the Obsidian/MindPalace
+# corpus so /read-agent-sessions search stays current without manual re-runs.
 #
 # Runs `read-agent-sessions prerender` in the background and returns
 # immediately so Claude's Stop event isn't delayed. A non-blocking flock

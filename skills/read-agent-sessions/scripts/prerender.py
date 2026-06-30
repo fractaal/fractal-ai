@@ -1,4 +1,4 @@
-"""Prerender agent sessions as Markdown files for Obsidian + qmd indexing."""
+"""Prerender agent sessions as Markdown files in the Obsidian/MindPalace corpus for qmd indexing."""
 from __future__ import annotations
 
 import json

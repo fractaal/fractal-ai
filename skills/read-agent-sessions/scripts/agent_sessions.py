@@ -199,9 +199,9 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     This is read-agent-sessions' own semantic component: meaning-based recall
     across every harness's sessions, complementing the lexical `grep`/`find`.
-    It runs on `qmd` over the `sessions` collection that `prerender` feeds. That
-    `qmd` and that collection also back the engineering-logs tooling is
-    incidental — nothing here calls into another skill.
+    It runs on `qmd` over the `sessions` collection that `prerender` feeds in
+    the Obsidian/MindPalace corpus. This is the canonical recall path for agent
+    history; it does not depend on separate manual engineering-log bookkeeping.
     """
     import contextlib
     import os
@@ -247,6 +247,17 @@ def cmd_search(args: argparse.Namespace) -> int:
     if args.json:
         cmd.append("--json")
     return subprocess.call(cmd, env=env)
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    """Launch the interactive Textual TUI (browse/filter/inspect sessions)."""
+    import os
+    tui = Path(__file__).resolve().parent.parent / "tui" / "sessions_tui.py"
+    if not tui.exists():
+        print(f"TUI not found at {tui}", file=sys.stderr)
+        return 1
+    os.execv(str(tui), [str(tui)])  # shebang launches it via `uv run`
+    return 0  # unreachable
 
 
 def resolve_target(args: argparse.Namespace) -> tuple[Provider, Path]:
@@ -340,6 +351,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ignore-case", action="store_true")
     p.set_defaults(func=cmd_grep)
 
+    # tui
+    p = sub.add_parser("tui", help="Launch the interactive TUI (browse/filter/inspect).")
+    p.set_defaults(func=cmd_tui)
+
     # summary
     p = sub.add_parser("summary", help="Print a compact session summary.")
     _harness_arg(p)
@@ -357,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_render)
 
     # prerender
-    p = sub.add_parser("prerender", help="Prerender sessions as Markdown into Obsidian vault for qmd indexing.")
+    p = sub.add_parser("prerender", help="Prerender sessions as Markdown into the Obsidian/MindPalace corpus for qmd indexing.")
     p.add_argument("--output", type=str, default=str(Path.home() / "Dropbox" / "DropsyncFiles" / "MindPalace" / "Sessions"),
                    help="Output directory for rendered Markdown files.")
     p.add_argument("--force", action="store_true", help="Re-render all sessions, ignoring manifest.")

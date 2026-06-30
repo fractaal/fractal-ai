@@ -32,6 +32,35 @@ The wrapper lives at:
 ~/.fractal-ai/skills/read-agent-sessions/scripts/read-agent-sessions
 ```
 
+## Interactive TUI (for Ben, not agents)
+
+Everything below is also driveable by hand from a full-screen terminal UI — so
+Ben never has to ask an agent "which session was that?". It's the same engine
+(same providers, same summarize/render, same `qmd` semantic search), just with a
+search bar, a scrollable session list, and a live transcript inspector.
+
+```bash
+read-agent-sessions tui     # subcommand on the same wrapper
+sessions-tui                # standalone launcher (~/.local/bin)
+```
+
+Runs via `uv run` with `textual` declared inline (PEP 723) — no global install.
+First launch indexes all sessions (~7s, streaming newest-first); subsequent
+launches are instant via an mtime-keyed cache at
+`~/.cache/agent-sessions-tui/index.json`.
+
+In the TUI:
+- **Type** to live-filter by metadata (name, prompt, cwd, branch, id, model).
+- **`g: <term>`** + Enter → raw lexical grep across transcript JSONL (ranked by hits).
+- **`s: <term>`** + Enter → semantic search via `qmd` (ranked by relevance).
+- **↑/↓** browse; the right pane renders the full transcript (roles colored,
+  tool calls, thinking).
+- **`/`** focus search · **Tab** focus transcript · **Ctrl+H** cycle harness
+  filter · **Ctrl+T** toggle thinking · **Ctrl+O** reveal file · **Ctrl+Y** copy
+  session id · **Ctrl+R** rescan · **q** quit.
+
+The TUI app lives at `tui/sessions_tui.py` next to this skill.
+
 ## Commands
 
 ### List recent sessions
@@ -97,11 +126,11 @@ read-agent-sessions render 9d774dcd --tail 50 --include-meta --max-chars 500
 
 ### Prerender sessions for semantic search
 
-Render every session to Markdown in the Obsidian vault so `qmd` can index it.
-This is the **producer** step behind `search` above — it populates the
-`sessions` collection that semantic search queries. (Incidentally the same
-`qmd` collection the engineering-logs tooling reads — shared plumbing, not
-something you invoke.)
+Render every session to friendly Markdown in the Obsidian/MindPalace corpus so
+`qmd` can index it. This is the **producer** step behind `search` above — it
+populates the `sessions` collection that semantic search queries. It is
+automated session rendering behind `read-agent-sessions`, not a separate manual
+Scratchpad bookkeeping step.
 
 ```bash
 read-agent-sessions prerender                 # incremental; skips already-rendered
@@ -144,5 +173,5 @@ read-agent-sessions grep --harness codex "pacman"
   exact string to match. Lexical first when you know the words; `search` when not.
 - Claude and Pi sessions include human-assigned session names (from auto-rename).
   Codex sessions derive a name from the first user message.
-- After recovering context, combine with repo state, engineering logs, and
-  current git history before making decisions.
+- After recovering context, combine with repo state, project docs/instructions,
+  and current git history before making decisions.

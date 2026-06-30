@@ -5,9 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// Pi counterpart to claude/hooks/prerender-sessions.sh: keep the Obsidian
-// vault's prerendered session Markdown files in sync with Pi's live transcripts
-// so /read-agent-sessions search stays current without manual re-runs.
+// Pi counterpart to claude/hooks/prerender-sessions.sh: keep the
+// Obsidian/MindPalace prerendered session corpus in sync with Pi's live
+// transcripts so /read-agent-sessions search stays current without manual
+// re-runs.
 //
 // Fires on `agent_end` — Pi's analogue to Claude Code's Stop event. The
 // prerender script is spawned detached so it never blocks the next Pi turn;
