@@ -1,0 +1,135 @@
+--- a/dist/core/settings-manager.js
++++ b/dist/core/settings-manager.js
+@@ -553,7 +553,7 @@
+     getRetrySettings() {
+         return {
+             enabled: this.getRetryEnabled(),
+-            maxRetries: this.settings.retry?.maxRetries ?? 3,
++            maxRetries: this.settings.retry?.maxRetries ?? Number.POSITIVE_INFINITY,
+             baseDelayMs: this.settings.retry?.baseDelayMs ?? 2000,
+         };
+     }
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -61,6 +61,8 @@
+ // ============================================================================
+ /** Standard thinking levels */
+ const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high"];
++/** Maximum agent-level retry backoff. Indefinite retry should keep trying, not sleep for days. */
++const MAX_AGENT_RETRY_DELAY_MS = 10000;
+ // ============================================================================
+ // AgentSession Class
+ // ============================================================================
+@@ -309,7 +311,8 @@
+     };
+     _willRetryAfterAgentEnd(event) {
+         const settings = this.settingsManager.getRetrySettings();
+-        if (!settings.enabled || this._retryAttempt >= settings.maxRetries) {
++        const hasRetryLimit = Number.isFinite(settings.maxRetries);
++        if (!settings.enabled || (hasRetryLimit && this._retryAttempt >= settings.maxRetries)) {
+             return false;
+         }
+         for (let i = event.messages.length - 1; i >= 0; i--) {
+@@ -1989,16 +1992,18 @@
+             return false;
+         }
+         this._retryAttempt++;
+-        if (this._retryAttempt > settings.maxRetries) {
++        const hasRetryLimit = Number.isFinite(settings.maxRetries);
++        if (hasRetryLimit && this._retryAttempt > settings.maxRetries) {
+             // Preserve the completed attempt count so post-run handling can emit the final failure.
+             this._retryAttempt--;
+             return false;
+         }
+-        const delayMs = settings.baseDelayMs * 2 ** (this._retryAttempt - 1);
++        const uncappedDelayMs = settings.baseDelayMs * 2 ** (this._retryAttempt - 1);
++        const delayMs = Math.min(uncappedDelayMs, MAX_AGENT_RETRY_DELAY_MS);
+         this._emit({
+             type: "auto_retry_start",
+             attempt: this._retryAttempt,
+-            maxAttempts: settings.maxRetries,
++            maxAttempts: hasRetryLimit ? settings.maxRetries : null,
+             delayMs,
+             errorMessage: message.errorMessage || "Unknown error",
+         });
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -2444,7 +2444,8 @@
+                 // Show retry indicator
+                 this.statusContainer.clear();
+                 this.retryCountdown?.dispose();
+-                const retryMessage = (seconds) => `Retrying (${event.attempt}/${event.maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
++                const maxAttempts = event.maxAttempts !== null && event.maxAttempts > 0 ? String(event.maxAttempts) : "∞";
++                const retryMessage = (seconds) => `Retrying (${event.attempt}/${maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
+                 this.retryLoader = new Loader(this.ui, (spinner) => theme.fg("warning", spinner), (text) => theme.fg("muted", text), retryMessage(Math.ceil(event.delayMs / 1000)));
+                 this.retryCountdown = new CountdownTimer(event.delayMs, this.ui, (seconds) => {
+                     this.retryLoader?.setMessage(retryMessage(seconds));
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -66,7 +66,7 @@
+ } | {
+     type: "auto_retry_start";
+     attempt: number;
+-    maxAttempts: number;
++    maxAttempts: number | null;
+     delayMs: number;
+     errorMessage: string;
+ } | {
+--- a/docs/settings.md
++++ b/docs/settings.md
+@@ -125,8 +125,8 @@
+ | Setting | Type | Default | Description |
+ |---------|------|---------|-------------|
+ | `retry.enabled` | boolean | `true` | Enable automatic agent-level retry on transient errors |
+-| `retry.maxRetries` | number | `3` | Maximum agent-level retry attempts |
+-| `retry.baseDelayMs` | number | `2000` | Base delay for agent-level exponential backoff (2s, 4s, 8s) |
++| `retry.maxRetries` | number | `∞` when unset | Maximum agent-level retry attempts. Omit for indefinite retries; set a finite number to cap attempts. |
++| `retry.baseDelayMs` | number | `2000` | Base delay for agent-level exponential backoff (2s, 4s, 8s, capped at 10s) |
+ | `retry.provider.timeoutMs` | number | SDK default | Provider/SDK request timeout in milliseconds |
+ | `retry.provider.maxRetries` | number | `0` | Provider/SDK retry attempts |
+ | `retry.provider.maxRetryDelayMs` | number | `60000` | Max server-requested delay before failing (60s) |
+@@ -139,7 +139,6 @@
+ {
+   "retry": {
+     "enabled": true,
+-    "maxRetries": 3,
+     "baseDelayMs": 2000,
+     "provider": {
+       "timeoutMs": 3600000,
+@@ -273,8 +272,7 @@
+     "keepRecentTokens": 20000
+   },
+   "retry": {
+-    "enabled": true,
+-    "maxRetries": 3
++    "enabled": true
+   },
+   "enabledModels": ["claude-*", "gpt-4o"],
+   "warnings": {
+--- a/docs/rpc.md
++++ b/docs/rpc.md
+@@ -949,12 +949,14 @@
+ {
+   "type": "auto_retry_start",
+   "attempt": 1,
+-  "maxAttempts": 3,
++  "maxAttempts": null,
+   "delayMs": 2000,
+   "errorMessage": "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"
+ }
+ ```
+ 
++`maxAttempts` is a number when `retry.maxRetries` is configured. It is `null` for the default unbounded retry mode.
++
+ ```json
+ {
+   "type": "auto_retry_end",
+@@ -963,7 +965,7 @@
+ }
+ ```
+ 
+-On final failure (max retries exceeded):
++On final failure (max retries exceeded for a finite `retry.maxRetries` setting):
+ ```json
+ {
+   "type": "auto_retry_end",

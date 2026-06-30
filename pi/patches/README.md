@@ -8,16 +8,28 @@ replace already-imported Pi core functions such as compaction cut-point selectio
 For those cases, Fractal applies small exact-match runtime patches to the installed
 `@earendil-works/pi-coding-agent` package before new Pi processes start.
 
-## Current patch
+## Current patches
 
 - `pi-coding-agent-compaction-custom-message.diff`
+- `pi-coding-agent-indefinite-retries.diff`
 - Applicator: `apply-pi-runtime-patches.mjs`
 
-Fixes Pi compaction accounting so entries that later become compaction summary
-input are counted when selecting the keep-recent cut point. This specifically
-covers `custom_message` entries such as `pi-goal-event` active-goal checkpoints.
-Without this, repeated goal checkpoints can be retained as "free" recent context
-and then explode Fractal compaction's single provider text part.
+`pi-coding-agent-compaction-custom-message.diff` fixes Pi compaction cut-point
+selection. It counts every entry that later becomes compaction summary input,
+including `custom_message` entries such as `pi-goal-event` active-goal
+checkpoints, so repeated goal checkpoints cannot be retained as "free" recent
+context and then explode Fractal compaction's single provider text part. It also
+keeps the post-compaction live suffix provider-replay-safe: delayed/background
+tool results must retain their matching assistant tool call, and pre-existing
+orphan tool results are summarized away when a later safe suffix exists. This
+prevents OpenAI/Codex `No tool call found for function call output` failures
+after compaction.
+
+`pi-coding-agent-indefinite-retries.diff` changes Pi's agent-level retry default
+from 3 attempts to unbounded retries. Explicit finite `retry.maxRetries` settings
+still cap retries. The retry backoff is capped at 10 seconds, and unbounded
+`auto_retry_start` events report `maxAttempts: null` so interactive/RPC consumers
+do not render a misleading finite cap.
 
 The applicator is idempotent:
 
