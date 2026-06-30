@@ -22,9 +22,9 @@ Before claiming a UI is good, inspect the actual style mechanics: selector scope
 
 Beautiful app UI is controlled attention.
 
-Start restrained, competent, and credible. Then spend aesthetic budget deliberately. Every visual technique is a degree of freedom. If you spam it, it stops carrying information.
+Start restrained, competent, and credible. Then spend aesthetic budget deliberately. Every visual technique is a degree of freedom. If you spam it, it stops carrying information. If you exercise it without a clear reason, it adds noise without signal and makes the product feel amateur.
 
-If everything is loud, nothing is loud. If everything is a card, nothing feels grouped. If every surface has a border, borders lose meaning. If every label is clever, the product sounds fake.
+If everything is loud, nothing is loud. If everything is glassy, nothing is material. If everything is mono, nothing reads as telemetry. If everything is a card, nothing feels grouped. If every surface has a border, borders lose meaning. If every label is clever, the product sounds fake.
 
 The goal is not minimalism for its own sake. The goal is a product interface that feels real, usable, ownable, and delightful because every choice has a job.
 
@@ -95,13 +95,16 @@ Before shipping or showing UI, reason through these mechanics:
 - Selector scope: does this selector hit only this component, or can it hit unrelated surfaces?
 - Component contracts: before writing selectors for a shared component, inspect the rendered DOM or component source and target the class, element, slot, or attribute it actually emits. A shared icon component might render `.ms` instead of `.icon`; that mismatch creates dead CSS unless you pass an explicit scoped className.
 - Class names: are generic names like `result`, `card`, `item`, `active`, `error`, `ms`, or `p` colliding with global styles?
-- Font inheritance: is text accidentally using an icon font, mono utility, display font, or inherited button default?
-- Box model: what exact width, height, padding, radius, and display mode does the element resolve to?
+- Font inheritance: is text accidentally using an icon font, mono utility, display font, or inherited button default? Is mono being used because alignment/telemetry requires it, or just because the UI wants to feel technical?
+- Surface opacity: is translucency/glass communicating layering or focus, or is it making text harder to read for no product reason?
+- Box model: what exact width, height, padding, radius, and display mode does the element resolve to? If Ben is asking about spacing, verify with actual rendered measurements or computed styles before answering — not visual vibes.
+- Optical spacing: do left/right insets, row/action gaps, stacked-button gaps, scrollbar gutters, and fade bands resolve to the same perceived rhythm? Account for scrollbars explicitly; a raw scrollbar can make a mathematically equal layout look too tight on the right.
 - Layout pressure: what happens when labels, counts, paths, durations, or translated text get longer?
-- Color semantics: does each color mean brand, action, state, or hierarchy? If not, remove or quiet it.
+- Color semantics: does each color mean brand, action, state, or hierarchy? If not, remove or quiet it. In tokenized or Material You-compatible apps, component CSS must use theme tokens and semantic token mixes; hardcoded colors and static accent tokens break the app's color contract unless that exact semantic accent is intentionally required.
 - Contrast: can the text and state be read under dark mode, dim surfaces, hover, focus, disabled, and selected states?
 - Density: are chips, pips, pills, buttons, rows, and cards sized according to their role, or are tiny things wearing big-card styles?
 - Token fit: is the element using existing product tokens, or inventing one-off values that break the system?
+- Scrollbars and overflow: if a panel scrolls, is the scrollbar styled to belong to the material system, or did a raw browser scrollbar break the illusion?
 - Responsive width: does the component survive the real container width, not just the screenshot width?
 
 A style audit is not optional polish. It is correctness work. If you add a class, ask what else already uses that name. If you add color, ask what state it communicates. If you add width or padding, ask what happens at the smallest and largest real containers.
@@ -235,6 +238,7 @@ Avoid box addiction:
 
 - Do not wrap every element in a bordered card
 - Do not create card inside card inside card unless the hierarchy is necessary
+- Keep nested surface depth to two levels by default: parent surface plus child row/card. A third tonal depth must prove it carries a real mode, ownership boundary, or interaction state.
 - Do not use containers to compensate for weak layout
 - Do not make every row feel equally elevated
 
@@ -270,6 +274,49 @@ Useful shape moves:
 
 Shape should make the UI ownable without making it cartoonish.
 
+## Material Fit: Edges Should Explain Relationships
+
+Material You / M3 Expressive is not just large rounded blobs. Shape communicates how surfaces relate.
+
+When controls sit beside a row, sheet, or list item, decide whether they are:
+
+- **Inside the surface**: controls share the parent container and inherit its padding rhythm.
+- **Beside the surface**: controls live in a separate column, visually apart from the row slab, with explicit air between row and action column.
+- **Molded to the surface**: adjacent edges get smaller radii so pieces feel like they slot together while still remaining separate tappable targets.
+
+If a row and its action stack are meant to slot together, encode the relationship in corners:
+
+- Main row edge facing the actions: lesser radius.
+- Top action: lesser radius on the side facing the row and on the edge facing the next action.
+- Bottom action: lesser radius on the side facing the row and on the edge facing the previous action.
+- Outer free corners keep the larger product radius.
+
+Do not add a visible wrapper just to make stacked actions feel grouped. Prefer two tonal action slabs with a small consistent gap, especially when the reference image implies the buttons are beside the row rather than inside it.
+
+## Spacing Must Be Verified, Not Eyeballed
+
+Spacing bugs are product-quality bugs. If Ben challenges spacing, stop guessing and measure the boxes.
+
+Before claiming spacing is fixed, capture or compute:
+
+- Left container inset.
+- Right visible inset after scrollbar gutter.
+- Row-to-action-column gap.
+- Gap between stacked action buttons.
+- Vertical row rhythm.
+- Action column width and button heights.
+- Fade/overflow boundary relative to the first visible item.
+
+Then make the numbers agree with the intended optical rhythm. Do not report "looks consistent" unless you have measured the relevant box model.
+
+For scrollable tonal containers:
+
+- The scroll content should pass under the header only when the material form implies it.
+- Overflow should stop at the actual rounded/tone boundary, not an arbitrary inner clipping line.
+- Use a container-colored fade when a hard cut would look amateurish.
+- Keep the fade band out of the first row's readable content; add clearance above the first item if needed, then re-check that the header has not become loose.
+- Reserve scrollbar gutter without over-padding the action side; perceived left/right balance matters more than raw CSS symmetry.
+
 ## Color Discipline
 
 Color should usually mean state, action, or brand. It should not be decoration by default.
@@ -290,6 +337,10 @@ Rules:
 - Gradients are rare and must have a job
 - If WARNING gets a color, the whole design should not also be covered in unrelated warm gradients
 - If a color appears, ask what state, action, or identity it communicates
+- Keep repeated actions chromatically stable across row states. An `Open` action should not change color just because the row is running, warning, or errored; state belongs in the status text/dot/metric accent unless the action itself changes consequence.
+- Do not tint an entire row/container by status unless the state is severe enough to own that much surface area. Prefer a small semantic marker, status subtitle, activity line, or metric accent. A full-row warning/error fill is high-budget and should be rare.
+- Hover states should reinforce the existing light/dark material relationship. For icon-only action slabs, a good M3 move is inversion: light-on-dark becomes dark-on-light, dark-on-light becomes light-on-dark. Do not introduce a new hue on hover unless the action consequence changes.
+- In Material You/token-driven products, never hardcode component-local colors (`oklch`, hex, raw rgba) or lean on a static accent like pink for generic UI; use `primary`, `tertiary`, surface, outline, and on-* tokens so the component follows the active theme
 - The layout should still work in grayscale
 
 ## Gradients Are Expensive
@@ -412,11 +463,13 @@ Inspect actor profiles, freshness, and tier facts.
 
 Rule: the title names the thing. The hint explains what is not obvious. Do not add a second headline just because the layout feels empty. For normal app tools, the default header pattern is semantic icon plus noun plus one compact hint. If the proposed title sounds like a thesis statement, it is probably marketing hierarchy leaking into a tool.
 
+Do not default to `eyebrow → newline → bigger headline` for ordinary app controls. That pattern is expensive hierarchy. Use it only when the eyebrow and headline carry different necessary information. In small control panels, one literal noun often beats two stacked labels: `Local sessions`, not `LOCAL ARIA` plus `Runs on this machine`.
+
 ### Avoid Duplicate Status Claims
 
-If the same fact appears twice, the UI tells the user it matters twice. That creates false hierarchy. Do not show `Viewer access: T4 Platform` in one badge and `Your current access: T4 Platform` in a nearby card. Pick one owner.
+If the same fact appears twice, the UI tells the user it matters twice. That creates false hierarchy. Do not show `Viewer access: T4 Platform` in one badge and `Your current access: T4 Platform` in a nearby card. Do not show `4 pending` in a summary chip and then `Pending — 4` immediately below unless the two counts mean different things. Pick one owner.
 
-If the fact gates the page, place it near the title as compact context. If the fact needs explanation, give it one dedicated panel. Do not repeat it as both decoration and content.
+If the fact gates the page, place it near the title as compact context. If the fact organizes a list, put it in that section header. If the fact needs explanation, give it one dedicated panel. Do not repeat it as both decoration and content.
 
 ### Do Not Expose Implementation Plumbing
 
@@ -469,7 +522,7 @@ Use icons where they reduce parsing cost:
 - State: fresh, stale, unresolved, healthy, degraded
 - Tier or severity: T1 through T4, low through critical
 - Inspector facts: actor ID, kind, observed, resolved
-- Metrics: total count, platform access, needs review
+- Metrics: CPU, memory, process count, total count, platform access, needs review
 
 Before styling an inspection-heavy page, define the icon vocabulary for repeated categories. Icons should be quiet, consistent scan anchors, not one-off decoration sprinkled onto headings after the fact.
 
@@ -491,8 +544,9 @@ Bad:
 - Buttons that promise huge magic actions when the product cannot support them
 - Text-only filters for semantic categories that already have strong icon vocabulary
 - Decorative one-off icons that do not repeat consistently for the same meaning
+- Icons added to one-off row actions just to make the row feel designed
 
-Buttons should be small composable units of action. Icons should repeat consistently enough that the user learns the grammar.
+Buttons should be small composable units of action. Match the product's existing button grammar before inventing a new silhouette. This is especially true in app-shell rails and nav clusters: a new rail control should look like it belongs to the existing rail button family before it advertises its special state. A row action like `Spin up` is usually a compact secondary pill, not a fat blob, unless it is the primary action of the entire surface. Icons should repeat consistently enough that the user learns the grammar.
 
 ## Motion Causality
 
@@ -507,7 +561,7 @@ Good motion:
 - Metric changes pulse from the number itself
 - Menu surfaces expand from the clicked object
 - Cards collapse back into their source
-- Hover states softly reshape, lift, or tonal-shift
+- Hover states softly reshape, lift, or tonal-shift only when the object is semantically interactive/elevated
 - Charts update smoothly without screaming for attention
 
 Bad motion:
@@ -517,6 +571,7 @@ Bad motion:
 - Constant glow movement
 - Things popping in from nowhere
 - Animation that competes with reading
+- Row hover lift when the row is not a button/card. A selectable row may get cursor + tonal change; translateY/elevation is a separate degree of freedom and must earn its semantics.
 
 If motion does not communicate state, origin, continuity, or action, remove it.
 
@@ -544,11 +599,14 @@ Typography should create hierarchy before color does.
 Rules:
 
 - App UI usually needs one serious sans and one mono for telemetry
+- Use mono for code, IDs, fixed-width numeric readouts, and telemetry; do not use it for ordinary labels, section headers, row metadata, or action copy unless alignment/measurement is the actual reason
 - Use tabular numerals for metrics
 - Keep headings proportional to the surface
 - Avoid giant marketing headlines inside app shells
 - Use weight, spacing, and alignment before decorative type
 - Use ornate display type only when the product surface justifies it
+
+Row typography must follow decision hierarchy. The object identity usually comes first and should read strongest: thread title, service name, actor, file, incident. The changing content comes second: message preview, latest activity, status detail. Metadata comes third: counts, timestamps, IDs, telemetry. Do not let previews, badges, or metadata visually outrank the row's title unless the user's decision genuinely starts with that field. Normalize machine/event labels into user-facing state language before rendering: `Idle`, `Running command`, or `Last ran: bash` beats raw lowercase fragments like `idle` or `completed: bash` when the UI is a control panel rather than a log stream.
 
 ## Density Discipline
 
@@ -572,7 +630,7 @@ Bad density:
 - Every section gets its own visual universe
 - Every number has a sentence explaining it
 
-Users should know what changed without reading the entire screen.
+Users should know what changed without reading the entire screen. Dense rows still need internal hierarchy: title strongest, preview/activity secondary, metadata quietest. If two adjacent text lines have nearly identical size, weight, and contrast but different jobs, the hierarchy is not designed yet. Telemetry is the exception where compact mono values and small repeated metric icons can help scan; ordinary labels and action rows should not inherit that treatment.
 
 ## The Frontend by Fractal Process
 
@@ -635,7 +693,9 @@ Before building or modifying CSS, state:
 - Existing selectors checked: grep for every new class and generic selector
 - Class names rejected: names avoided because they collide or are too broad
 - Font plan: body font, mono use, icon font use, and where each is forbidden
-- Width and density plan: expected min, max, padding, radius, and overflow behavior
+- Width and density plan: expected min, max, padding, radius, row rhythm, action gaps, scrollbar gutter, and overflow behavior
+- Edge relationship plan: whether actions live inside, beside, or molded to the row/surface, and which corners intentionally use lesser radii
+- Measurement plan: which box-model values must be checked before telling Ben a spacing/radius issue is fixed
 - Color plan: exact semantic role of every accent, state, and muted color
 - Interaction states: hover, focus, selected, disabled, loading, and error
 - Responsive breakpoints or container widths that must be checked
@@ -718,6 +778,9 @@ Before showing Ben a frontend, answer these:
 - Does it look intentional at widescreen?
 - Did you grep for every new class name and selector that could collide globally?
 - Did you inspect computed or source styles for color, width, font, padding, radius, overflow, and display?
+- If Ben asked about spacing, did you measure the actual row/action/scrollbar/fade boxes before replying?
+- Do adjacent controls live in the right place — inside the row, beside it, or molded to it — instead of accidentally looking embedded?
+- Are scrollbar gutters and fade bands accounted for in perceived spacing?
 - Are tiny elements protected from broad card, result, pill, button, or utility classes?
 - Are text spans protected from icon-font utility classes such as `.ms`?
 - Does each accent color have a semantic job?
