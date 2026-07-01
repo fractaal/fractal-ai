@@ -112,7 +112,7 @@ Calling something "done" when it isn't is NOT a shortcut. It is a BETRAYAL of th
 
 ##  3. CODE IS A LIABILITY. LESS CODE, SIMPLER CODE IS BETTER.
 
-Every line is a liability. Eliminate problems at the root instead of handling them downstream. Three similar lines beat a premature abstraction. Prefer something long BUT readable instead of something terse and arcane (long if-else statement vs a hard-to-read ternary -- ALWAYS prefer the if-else) If a working reference exists in the codebase, READ IT AND MATCH IT.
+Every line is a liability. Eliminate problems at the root instead of handling them downstream. Three similar lines beat a premature abstraction. Prefer something long BUT readable instead of something terse and arcane (long if-else statement vs a hard-to-read ternary -- ALWAYS prefer the if-else) If a working reference exists in the codebase, READ IT AND MATCH IT. KISS - KEEP IT SIMPLE STUPID. YAGNI - YOU AREN'T GONNA NEED IT.
 
 **PROVE WHY THIS NEEDS TO EXIST.** Treat every feature, field, flag, type, abstraction, helper, dependency, service, migration, endpoint, metadata field, and line of code like an early NASA launch decision: the burden of proof is on launch, not on delay. Before building it, prove to Ben and to yourself why the simpler, more direct implementation is insufficient. Ask: "yo, what the hell is this for?" What user-visible or system-critical decision does it enable? What real failure does it prevent? What behavior becomes impossible without it? If the answer is vague, aesthetic, taxonomic, "for safety/UX" without a concrete path, or merely describes obvious facts, do not add it. Delete categories that restate each other. Delete fields whose values are implied by other fields. Delete wrappers that do not remove real complexity. Genuine engineering elegance is allowed when earned; unproven structure is waste.
 
@@ -122,7 +122,7 @@ When working with other agents / subagents, brief them with THE ENTIRE STORY. Fu
 
 If you scope a subagent so narrowly or micromanage it, **WHAT'S THE POINT?** You've pre-decided the decomposition and REMOVED THE SAFETY NET that catches your blind spots. DO NOT write prompts that say "don't touch X" or "this is a SEPARATE follow-up task." That is how features ship half-built. The subagent sees the whole picture or it CANNOT DO ITS JOB.
 
-This applies HARDEST to reviewers. A review brief that hands the reviewer a checklist of what to find — "verify items 1–8" — undermines it the exact same way: a checklist can only contain what YOU already thought of, so it exports your blind spots and signals "everything off the list is fine." Brief a reviewer with context, the user-facing outcome, and open questions — NEVER a findings-list. The bug you most need a reviewer for is the one you didn't know to ask about; a checklist guarantees they never look for it.
+This applies HARDEST to reviewers. A review brief that hands the reviewer a checklist of what to find — "verify items 1–8" — undermines it the exact same way: a checklist can only contain what YOU already thought of, so it exports your blind spots and signals "everything off the list is fine." Brief a reviewer with context, the user-facing outcome, and open questions — NEVER a findings-list. The bug you most need a reviewer for is the one you didn't know to ask about; a checklist guarantees they never look fozr it.
 
 ## 5. VERIFY THE FEATURE, NOT THE PROXY
 
@@ -235,4 +235,3 @@ The user runs Claude, Codex, Gemini, and other agents. They are peers with diffe
 > delete it. When the section is empty, leave it reading "None at this time."
 
 Claude / Claude Code is currently unavailable at this time. Don't bother trying to spawn a Claude reviewer or Claude subagent. 2026-06-29
-For aria-chat/Symphony: Work primarily in the main worktree, even if the changes are dirty -- we're prioritizing velocity, so the more changes we lump and ship in bulk, the better. Do NOT spawn separate worktrees for aria-chat/Symphony/symph-aria work unless Ben specifically asks. JUST WARN LOUDLY THAT WE ARE WORKING IN ONE MAIN WORKTREE AS AN EXPLICIT NOTSWE EXCEPTION AGAINST USING WORKTREES GUIDANCE. Just commit frequently. 2026-06-29
