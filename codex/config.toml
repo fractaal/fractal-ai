@@ -6,9 +6,9 @@
 # on re-install:
 #   [projects.*]      trusted directory paths (Ben's private dir tree)
 #   [marketplaces.*]  local plugin-marketplace paths + timestamps + revisions
-#   [mcp_servers.*]   MCP servers — serena is wired by ensure_serena_mcp, private
-#                     servers by deploy/install.local.sh; node_repl /
-#                     chrome-devtools are written by Codex Desktop
+#   [mcp_servers.*]   MCP servers — serena and chrome-devtools are wired by
+#                     deploy/install.sh, private servers by deploy/install.local.sh;
+#                     node_repl is written by Codex Desktop
 #   [hooks.state.*]   per-machine hook-trust hashes
 #   [tui.*]           UI nudge counters
 #   [plugins.*]       coupled to the local marketplaces above (machine-specific)

@@ -18,6 +18,47 @@ auth, caches, and per-machine state we don't track here), so `deploy/install.sh`
 Because Pi piggybacks on `~/.claude.json`, a server only needs to be written in
 **two** places (Claude's JSON + Codex's TOML) to reach all three harnesses.
 
+## Chrome DevTools MCP
+
+[Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) is
+wired for browser automation/debugging across Claude Code, Pi, and Codex.
+
+The important launch flag is **`--isolated`**. Without it, every launched Chrome
+instance uses the shared default profile at
+`~/.cache/chrome-devtools-mcp/chrome-profile`, so concurrent agents can collide
+on cookies, storage, tabs, and Chrome's profile lock. With `--isolated`, each
+MCP server process gets a temporary user-data-dir that is cleaned up when Chrome
+closes.
+
+This is intentionally process-level isolation, not just page-level
+`isolatedContext`. The `new_page(..., isolatedContext=...)` tool is still useful
+inside one MCP session, but a shared MCP server process has global state such as
+selected page and trace state. The safe multi-agent boundary is one MCP server
+process per harness/agent, each launched with `--isolated`.
+
+### Live entries
+
+Claude Code (also feeds Pi):
+
+```bash
+claude mcp add --scope user chrome-devtools -- \
+  npx -y chrome-devtools-mcp@latest \
+  --executablePath=/opt/google/chrome/google-chrome \
+  --isolated
+```
+
+Codex — `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest", "--executablePath=/opt/google/chrome/google-chrome", "--isolated"]
+```
+
+`deploy/install.sh` (`ensure_chrome_devtools_mcp`) writes both entries
+idempotently, preserving any existing MCP environment map, and falls back to
+omitting `--executablePath` on machines without `/opt/google/chrome/google-chrome`.
+
 ## Serena
 
 [Serena](https://github.com/oraios/serena) is a semantic code-retrieval/editing

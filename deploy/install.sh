@@ -263,6 +263,144 @@ ensure_serena_mcp() {
   fi
 }
 
+ensure_chrome_devtools_mcp() {
+  # Chrome DevTools MCP — browser automation/debugging MCP server, wired into
+  # Claude Code / Pi (via ~/.claude.json) and Codex. `--isolated` is deliberate:
+  # every MCP server process gets a temporary Chrome profile instead of sharing
+  # ~/.cache/chrome-devtools-mcp/chrome-profile, so concurrent agents do not
+  # clobber one another's cookies, storage, tabs, or profile lock.
+  local chrome_args_json
+  local chrome_executable="/opt/google/chrome/google-chrome"
+  if [[ -x "$chrome_executable" ]]; then
+    chrome_args_json='["-y", "chrome-devtools-mcp@latest", "--executablePath=/opt/google/chrome/google-chrome", "--isolated"]'
+  else
+    chrome_args_json='["-y", "chrome-devtools-mcp@latest", "--isolated"]'
+  fi
+
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "  WARN: npx not found; skipping Chrome DevTools MCP wiring" >&2
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "  WARN: python3 not found; skipping Chrome DevTools MCP wiring" >&2
+    return 0
+  fi
+
+  # Claude Code (also feeds Pi via the claude-mcp-bridge reading ~/.claude.json).
+  local claude_json="$HOME/.claude.json"
+  if [[ -f "$claude_json" ]]; then
+    local claude_tmp
+    claude_tmp=$(mktemp)
+    if CHROME_DEVTOOLS_MCP_ARGS="$chrome_args_json" python3 - "$claude_json" >"$claude_tmp" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text())
+servers = data.get("mcpServers")
+if not isinstance(servers, dict):
+    servers = {}
+    data["mcpServers"] = servers
+
+entry = servers.get("chrome-devtools")
+if not isinstance(entry, dict):
+    entry = {}
+
+env = entry.get("env")
+if not isinstance(env, dict):
+    env = {}
+
+entry.update({
+    "type": "stdio",
+    "command": "npx",
+    "args": json.loads(os.environ["CHROME_DEVTOOLS_MCP_ARGS"]),
+    "env": env,
+})
+servers["chrome-devtools"] = entry
+sys.stdout.write(json.dumps(data, indent=2) + "\n")
+PY
+    then
+      if ! cmp -s "$claude_json" "$claude_tmp"; then
+        echo "  Registering Chrome DevTools MCP for Claude Code / Pi (isolated profile)" >&2
+        cp -a "$claude_json" "$claude_json.bak-$(date +%Y%m%d-%H%M%S)"
+        mv "$claude_tmp" "$claude_json"
+      else
+        rm "$claude_tmp"
+      fi
+    else
+      rm -f "$claude_tmp"
+      echo "  WARN: failed to update Chrome DevTools MCP in $claude_json" >&2
+    fi
+  elif command -v claude >/dev/null 2>&1; then
+    echo "  Registering Chrome DevTools MCP for Claude Code / Pi (isolated profile)" >&2
+    if [[ -x "$chrome_executable" ]]; then
+      claude mcp add --scope user chrome-devtools -- \
+        npx -y chrome-devtools-mcp@latest --executablePath="$chrome_executable" --isolated >/dev/null 2>&1 \
+        || echo "  WARN: 'claude mcp add chrome-devtools' failed" >&2
+    else
+      claude mcp add --scope user chrome-devtools -- \
+        npx -y chrome-devtools-mcp@latest --isolated >/dev/null 2>&1 \
+        || echo "  WARN: 'claude mcp add chrome-devtools' failed" >&2
+    fi
+  else
+    echo "  NOTE: ~/.claude.json absent and claude CLI not found; Chrome DevTools MCP not wired for Claude Code / Pi" >&2
+  fi
+
+  # Codex.
+  local codex_cfg="$HOME/.codex/config.toml"
+  if [[ -f "$codex_cfg" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      local codex_tmp
+      codex_tmp=$(mktemp)
+      if CHROME_DEVTOOLS_MCP_ARGS="$chrome_args_json" uv run --quiet --with tomlkit python3 - "$codex_cfg" >"$codex_tmp" <<'PY'
+import json
+import os
+import sys
+import tomlkit
+
+path = sys.argv[1]
+doc = tomlkit.parse(open(path).read())
+servers = doc.get("mcp_servers")
+if servers is None:
+    servers = tomlkit.table()
+    doc["mcp_servers"] = servers
+
+args = tomlkit.array()
+args.multiline(False)
+for arg in json.loads(os.environ["CHROME_DEVTOOLS_MCP_ARGS"]):
+    args.append(arg)
+
+entry = servers.get("chrome-devtools")
+if not (hasattr(entry, "items") and not isinstance(entry, str)):
+    entry = tomlkit.table()
+    servers["chrome-devtools"] = entry
+
+entry["command"] = "npx"
+entry["args"] = args
+sys.stdout.write(tomlkit.dumps(doc))
+PY
+      then
+        if ! cmp -s "$codex_cfg" "$codex_tmp"; then
+          echo "  Registering Chrome DevTools MCP for Codex (isolated profile)" >&2
+          cp -a "$codex_cfg" "$codex_cfg.bak-$(date +%Y%m%d-%H%M%S)"
+          mv "$codex_tmp" "$codex_cfg"
+        else
+          rm "$codex_tmp"
+        fi
+      else
+        rm -f "$codex_tmp"
+        echo "  WARN: failed to update Chrome DevTools MCP in $codex_cfg" >&2
+      fi
+    else
+      echo "  WARN: uv not found; cannot update Codex Chrome DevTools MCP config (needs tomlkit). Skipping." >&2
+    fi
+  else
+    echo "  NOTE: ~/.codex/config.toml absent; run Codex once, then re-run install to wire Chrome DevTools MCP" >&2
+  fi
+}
+
 ensure_codex_config() {
   # Codex's ~/.codex/config.toml co-mingles portable prefs (model, approval/sandbox
   # posture, features) with per-machine runtime state: [projects.*] trust paths,
@@ -389,13 +527,14 @@ if [[ -d "$pi_extensions_source" ]]; then
   link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
 fi
 
-apply_pi_runtime_patches
-
 # ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────
 ensure_serena_mcp
+ensure_chrome_devtools_mcp
 
 # ── Codex portable config (merged into ~/.codex/config.toml, not symlinked) ──
 ensure_codex_config
+
+apply_pi_runtime_patches
 
 # ── Machine-local / private wiring (gitignored). Sourced last so it can use the
 #    helpers/env above; holds anything whose details must not be in this public
