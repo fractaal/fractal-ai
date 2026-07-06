@@ -179,11 +179,16 @@ If you skip `pre-implementation-checklist`, you WILL build on wrong assumptions.
 
 A local checkout is **stale until proven fresh.** Before ANY investigation, edit, audit, or branch/worktree creation: **`git fetch origin` and base your work on `origin/main`** (or the relevant upstream branch) — NOT on whatever commit your local `main`/working dir happens to be parked at. Check `git rev-list --count HEAD..origin/main`; if it's not 0, you are stale.
 
+**If the checkout is clean and only behind its upstream, fix the staleness immediately.** Do not merely identify that `main` is behind and keep working anyway. If `git status --short` shows no local file changes and `git rev-list --left-right --count HEAD...origin/main` shows `0 N`, run `git pull --ff-only origin main` (or the equivalent upstream branch) before continuing. The whole point of detecting stale-but-clean is to eliminate it.
+
+If the checkout has uncommitted changes, do **not** stash, reset, overwrite, or pull through them unless Ben explicitly asks; preserve the user's work and either ask or create a separate worktree from `origin/main`. If the branch has local commits, is ahead, or has diverged, do not pretend it is clean-stale — fetch, inspect, and choose the safe path.
+
 This has burned us repeatedly and severely. The classic failure: do a full investigation + edits + commit against a local checkout that turns out to be **dozens or hundreds of commits behind** `origin/main`. Every line number, every "this string is here," every render-path trace is then against code that no longer exists. The push gets rejected as non-fast-forward, and you discover upstream already refactored the exact files — sometimes already reworded the exact strings — making the whole effort wrong and forcing a redo. Worse, if it *had* merged cleanly you'd have silently reverted 100 commits of other people's work.
 
 The rule:
-- **Read-only question about the code?** Still `git fetch` and read at `origin/main`, or at minimum state that your read is against a possibly-stale local tree.
-- **Any real work?** `git fetch`, then `git worktree add .worktrees/<task> -b <branch> origin/main`. Work there. Push the branch straight to its upstream (a clean fast-forward) — this never depends on, and never disturbs, the state of the primary checkout.
+- **Clean primary checkout on the target branch, only behind upstream?** Pull it forward with `git pull --ff-only origin <branch>` immediately. Do not stop at reporting that it is stale.
+- **Read-only question about the code?** Still `git fetch`; if the current checkout is clean and only behind, pull it forward, otherwise read at `origin/main` or state that your read is against a possibly-stale local tree.
+- **Any real work?** `git fetch`, then either fast-forward a clean stale target checkout as above or create the task worktree from `origin/main`: `git worktree add .worktrees/<task> -b <branch> origin/main`. Work there. Push the branch straight to its upstream (a clean fast-forward) — this never depends on, and never disturbs, the state of a dirty primary checkout.
 - **Shared/NFS clones** (e.g. Aria's `/share/system/aria-repo`) are *especially* prone to being stale — they're nobody's active checkout. Treat "latest" as a claim to verify, never an assumption.
 
 *(Established 2026-06-08, Ben — after a full system-event audit + commit was done against a local `main` that was 95 commits behind `origin/main`; one edit targeted a string upstream had already reworded. Recurring mistake, not a one-off.)*
