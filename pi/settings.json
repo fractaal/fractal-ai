@@ -15,7 +15,7 @@
   "packages": [
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a",
     "git:github.com/fractaal/pi-goal-x@d71b0c5a8a0fa53513ef87586772f5aff39e0c97",
-    "/home/benjude/Projects/pi-cross-agent-memory"
+    "git:github.com/fractaal/pi-cross-agent-memory@f914f87d4962f809d796d1a88c805c2dd53a1685"
   ],
   "theme": "dark"
 }
