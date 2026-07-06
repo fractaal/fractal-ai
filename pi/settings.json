@@ -14,7 +14,7 @@
   },
   "packages": [
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a",
-    "git:github.com/fractaal/pi-goal-x@f83c684506514110810355541c851f0e441789c7"
+    "git:github.com/fractaal/pi-goal-x@d71b0c5a8a0fa53513ef87586772f5aff39e0c97"
   ],
   "theme": "dark"
 }
