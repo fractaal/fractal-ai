@@ -548,6 +548,36 @@ Bad:
 
 Buttons should be small composable units of action. Match the product's existing button grammar before inventing a new silhouette. This is especially true in app-shell rails and nav clusters: a new rail control should look like it belongs to the existing rail button family before it advertises its special state. A row action like `Spin up` is usually a compact secondary pill, not a fat blob, unless it is the primary action of the entire surface. Icons should repeat consistently enough that the user learns the grammar.
 
+## Event Feedback Causality
+
+Events should be colocated with the thing that caused them. If a row, message,
+tool call, field, button, or panel triggers feedback, put the feedback on that
+object or in its immediate region. This matters most for transient feedback:
+short-lived state shown far away forces the user to mentally connect cause and
+effect across the screen.
+
+Use global strips, rails, banners, or footers only for genuinely global or
+ambient state: connectivity, active mode, account/session health, sync state,
+quota, or app-wide outages. Do not put a one-off consequence from a specific
+object in an ambient status surface just because that surface already exists.
+
+Bad:
+
+- A tool call is blocked in the transcript, but the notice appears under the
+  composer.
+- A row action fails, but the error appears in a distant sidebar.
+- A field validation error appears as a global toast while the field stays
+  visually unchanged.
+
+Better:
+
+- Blocked tool feedback appears in the turn/trace where the tool was attempted.
+- Row-action errors attach to that row or action cluster.
+- Field errors sit under or beside the field that needs correction.
+
+Rule: transient feedback answers "what just happened here?" The answer belongs
+where "here" is.
+
 ## Motion Causality
 
 Delight should come from material behavior, not random animation.
