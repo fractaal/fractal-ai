@@ -27,7 +27,7 @@ Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/inst
   preserving that file's per-machine/runtime sections (`[projects.*]`, `[marketplaces.*]`,
   `[plugins.*]`, `[hooks.state.*]`, `node_repl`, `[tui.*]`). Only the keys present in
   `codex/config.toml` are managed.
-- `mcp/` — cross-harness MCP server wiring (Serena). Not symlinked: `install.sh` injects
+- `mcp/` — cross-harness MCP server wiring (Chrome DevTools). Not symlinked: `install.sh` injects
   entries into each harness's runtime config (`~/.claude.json` for Claude Code + Pi's
   bridge, `~/.codex/config.toml` for Codex). See `mcp/README.md`.
 - `deploy/` — install scripts (POSIX + PowerShell). `install.local.sh` is a GITIGNORED
