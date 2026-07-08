@@ -13,9 +13,12 @@
     "keepRecentTokens": 64000
   },
   "packages": [
-    "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a",
-    "git:github.com/fractaal/pi-goal-x@d71b0c5a8a0fa53513ef87586772f5aff39e0c97",
-    "git:github.com/fractaal/pi-cross-agent-memory@f914f87d4962f809d796d1a88c805c2dd53a1685"
+    "npm:@fractaal/pi-agentic-processes@0.1.0",
+    "npm:@fractaal/pi-fractal-compact@0.1.0",
+    "npm:@fractaal/pi-codex-usage-info@0.1.0",
+    "npm:@ryan_nookpi/pi-extension-claude-mcp-bridge@1.1.2",
+    "npm:@fractaal/pi-goal-x@0.20.0",
+    "npm:@fractaal/pi-cross-agent-memory@0.2.0"
   ],
   "theme": "dark"
 }
