@@ -244,6 +244,7 @@ $claudeStatuslineSource = Join-Path $FractalAiHome 'claude/statusline-command.sh
 # Pi-specific sources
 $piSettingsSource = Join-Path $FractalAiHome 'pi/settings.json'
 $piExtensionsSource = Join-Path $FractalAiHome 'pi/extensions'
+$piBinSource = Join-Path $FractalAiHome 'pi/bin'
 
 # Shared: deploy DEPLOYED-INSTRUCTIONS.md as AGENTS.md / CLAUDE.md
 if (Test-Path -Path $deployedInstructionsSource -PathType Leaf) {
@@ -286,7 +287,7 @@ if (Test-Path -Path $claudeStatuslineSource -PathType Leaf) {
     Link-FractalItem -Source $claudeStatuslineSource -Target (Join-Path (Join-Path $HOME '.claude') 'statusline-command.sh')
 }
 
-# Pi-only: settings.json, extensions
+# Pi-only: settings.json, extensions, helper bin scripts
 if (Test-Path -Path $piSettingsSource -PathType Leaf) {
     Link-FractalItem -Source $piSettingsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'settings.json')
     Ensure-PiMcpBridgeCache
@@ -294,6 +295,10 @@ if (Test-Path -Path $piSettingsSource -PathType Leaf) {
 
 if (Test-Path -Path $piExtensionsSource -PathType Container) {
     Link-FractalItem -Source $piExtensionsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'extensions')
+}
+
+if (Test-Path -Path $piBinSource -PathType Container) {
+    Link-DirectoryChildren -Source $piBinSource -Target (Join-Path (Join-Path $HOME '.local') 'bin')
 }
 
 Apply-PiRuntimePatches

@@ -3,6 +3,7 @@ import { completeSimple, type Message, type Tool } from "@earendil-works/pi-ai";
 import { buildSessionContext, convertToLlm, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const CUSTOM_ENTRY_TYPE = "pi-auto-rename";
+const SUBAGENT_PREFIX = "[subagent]";
 const DEFAULT_MIN_USER_TURNS_BETWEEN_RENAMES = 50;
 const MAX_TITLE_LENGTH = 100;
 
@@ -20,6 +21,7 @@ Rules:
 - Reflect the actual focus/outcome of the conversation, not just the repository name.
 - No markdown, no bullets, no quotes, no trailing period.
 - Optionally prefix with exactly one of [In Progress], [Blocked], or [Complete] only when the status is obvious.
+- Do not add [subagent] yourself; Pi adds it automatically when the process is tagged as a subagent.
 - Maximum 100 characters.
 
 Good examples:
@@ -40,8 +42,37 @@ function configuredMinTurns(): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MIN_USER_TURNS_BETWEEN_RENAMES;
 }
 
+function envFlagIsTruthy(value: string | undefined): boolean {
+	return /^(1|true|yes|y|on|subagent)$/i.test(value?.trim() ?? "");
+}
+
+function envRoleIsSubagent(value: string | undefined): boolean {
+	return /^(subagent|sub-agent|worker|reviewer)$/i.test(value?.trim() ?? "");
+}
+
+function isSubagentSession(): boolean {
+	return (
+		envFlagIsTruthy(process.env.PI_IS_SUBAGENT) ||
+		envFlagIsTruthy(process.env.PI_SUBAGENT) ||
+		envRoleIsSubagent(process.env.PI_SESSION_ROLE) ||
+		envRoleIsSubagent(process.env.PI_SESSION_KIND)
+	);
+}
+
+function stripSubagentPrefixes(raw: string): string {
+	let value = raw.trim();
+	while (/^\[subagent\](?:\s+|$)/i.test(value)) {
+		value = value.replace(/^\[subagent\]\s*/i, "").trim();
+	}
+	return value;
+}
+
+function hasSubagentPrefix(raw: string): boolean {
+	return /^\[subagent\](?:\s+|$)/i.test(raw.trim());
+}
+
 function isBareName(name: string | undefined, sessionId: string): boolean {
-	const value = (name ?? "").trim();
+	const value = stripSubagentPrefixes(name ?? "");
 	if (!value) return true;
 	if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return true;
 	if (/^[0-9a-f]{6,32}$/i.test(value)) return true;
@@ -75,6 +106,14 @@ function sanitizeTitle(raw: string): string {
 	}
 
 	return title;
+}
+
+function normalizeSessionTitle(raw: string): string {
+	const title = sanitizeTitle(raw);
+	if (!title || !isSubagentSession()) return title;
+
+	const withoutPrefix = stripSubagentPrefixes(title);
+	return withoutPrefix ? `${SUBAGENT_PREFIX} ${withoutPrefix}` : SUBAGENT_PREFIX;
 }
 
 function fallbackTitle(ctx: ExtensionContext): string {
@@ -196,8 +235,9 @@ function totalUserTurns(ctx: ExtensionContext): number {
 }
 
 function terminalTitle(name: string | undefined, cwd: string): string {
-	const rawLabel = name?.trim() || path.basename(cwd) || cwd;
-	const label = sanitizeTitle(rawLabel) || "pi";
+	const cwdLabel = path.basename(cwd) || cwd;
+	const rawLabel = name?.trim() || (isSubagentSession() ? `${SUBAGENT_PREFIX} ${cwdLabel}` : cwdLabel);
+	const label = normalizeSessionTitle(rawLabel) || "pi";
 	return `π ${label}`;
 }
 
@@ -215,13 +255,19 @@ function queueTitleUpdate(ctx: ExtensionContext, name: string): void {
 	}, 0);
 }
 
-function applySessionName(pi: ExtensionAPI, ctx: ExtensionContext, name: string, source: "auto" | "manual" | "generated"): void {
-	const cleaned = sanitizeTitle(name);
+function applySessionName(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	name: string,
+	source: "auto" | "manual" | "generated" | "subagent",
+): string {
+	const cleaned = normalizeSessionTitle(name);
 	if (!cleaned) throw new Error("Session name cannot be empty");
 	const userTurns = totalUserTurns(ctx);
 	pi.setSessionName(cleaned);
 	pi.appendEntry(CUSTOM_ENTRY_TYPE, { source, name: cleaned, userTurns });
 	queueTitleUpdate(ctx, cleaned);
+	return cleaned;
 }
 
 export default function autoRenameExtension(pi: ExtensionAPI) {
@@ -242,6 +288,17 @@ export default function autoRenameExtension(pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
+		const currentName = pi.getSessionName();
+		if (
+			isSubagentSession() &&
+			currentName &&
+			!isBareName(currentName, ctx.sessionManager.getSessionId()) &&
+			!hasSubagentPrefix(currentName)
+		) {
+			applySessionName(pi, ctx, currentName, "subagent");
+			return;
+		}
+
 		updateTitle(ctx);
 	});
 
@@ -251,6 +308,11 @@ export default function autoRenameExtension(pi: ExtensionAPI) {
 
 		const currentName = pi.getSessionName();
 		const sessionId = ctx.sessionManager.getSessionId();
+		if (isSubagentSession() && currentName && !isBareName(currentName, sessionId) && !hasSubagentPrefix(currentName)) {
+			applySessionName(pi, ctx, currentName, "subagent");
+			return;
+		}
+
 		const needsBareRename = isBareName(currentName, sessionId);
 		const needsDriftRename = !needsBareRename && userTurnCountSinceLastSessionInfo(ctx) >= configuredMinTurns();
 		if (!needsBareRename && !needsDriftRename) return;
@@ -287,8 +349,8 @@ export default function autoRenameExtension(pi: ExtensionAPI) {
 
 				ctx.ui.setStatus("rename", "renaming session…");
 				if (explicitName) {
-					applySessionName(pi, ctx, explicitName, "manual");
-					ctx.ui.notify(`Renamed session: ${sanitizeTitle(explicitName)}`, "info");
+					const renamed = applySessionName(pi, ctx, explicitName, "manual");
+					ctx.ui.notify(`Renamed session: ${renamed}`, "info");
 					return;
 				}
 

@@ -476,6 +476,7 @@ claude_statusline_source="$FRACTAL_AI_HOME/claude/statusline-command.sh"
 # ── Pi-specific sources ───────────────────────────────────────────────
 pi_settings_source="$FRACTAL_AI_HOME/pi/settings.json"
 pi_extensions_source="$FRACTAL_AI_HOME/pi/extensions"
+pi_bin_source="$FRACTAL_AI_HOME/pi/bin"
 
 # ── Shared: deploy DEPLOYED-INSTRUCTIONS.md as AGENTS.md / CLAUDE.md ──
 if [[ -f "$deployed_instructions_source" ]]; then
@@ -525,6 +526,10 @@ fi
 
 if [[ -d "$pi_extensions_source" ]]; then
   link_item "$pi_extensions_source" "$HOME/.pi/agent/extensions"
+fi
+
+if [[ -d "$pi_bin_source" ]]; then
+  link_directory_children "$pi_bin_source" "$HOME/.local/bin"
 fi
 
 # ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────

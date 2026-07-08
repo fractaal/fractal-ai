@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Launch Pi as a child/worker session. Ben's Pi auto-renamer reads these env
+# vars and prefixes the session display name with [subagent], making parent
+# threads easier to find in /resume and read-agent-sessions.
+set -euo pipefail
+
+export PI_IS_SUBAGENT=1
+export PI_SESSION_ROLE="${PI_SESSION_ROLE:-subagent}"
+export PI_SESSION_KIND="${PI_SESSION_KIND:-subagent}"
+
+exec pi "$@"

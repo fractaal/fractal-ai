@@ -89,6 +89,13 @@ the human navigates by it), launches `--cmd`, waits `--boot-wait` seconds (or
 polls `--ready <regex>`), then prints **only the pane id** to stdout. `--here`
 splits the current window instead, for side-by-side.
 
+When `--cmd` starts with `pi`, `launch-agent.sh` automatically exports
+`PI_IS_SUBAGENT=1 PI_SESSION_ROLE=subagent PI_SESSION_KIND=subagent` in the
+child pane. Ben's Pi auto-renamer uses that to prefix the child session display
+name with `[subagent]`, so reviewer/worker sessions do not bury the parent
+thread in `/resume`. Use `--no-subagent-label` only when intentionally launching
+a primary Pi pane through this worker helper.
+
 ### `send-keys-then-enter.sh` — type a prompt and submit it
 
 ```bash
@@ -295,7 +302,7 @@ What to pass as `launch-agent.sh --cmd`:
 
 | Agent | `--cmd` value |
 |---|---|
-| Pi | `pi` |
+| Pi | `pi` (auto-tagged as `[subagent]` by `launch-agent.sh`; use `pi-subagent` for direct/manual launches outside this helper) |
 | Codex | `codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.5 -c model_reasoning_effort=high` |
 | Claude | `claude` |
 
