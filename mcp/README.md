@@ -15,8 +15,9 @@ auth, caches, and per-machine state we don't track here), so `deploy/install.sh`
 | Pi | *no native MCP* | The pinned `fractaal/pi-extension` claude-mcp-bridge scans config files and unconditionally reads **`~/.claude.json`** (the surface our wiring relies on) — so the Claude Code entry above **also serves Pi**, no separate Pi config. Caveat: it scans `~/.mcp.json` *first*, then `~/.claude.json`, deduping by name with **first-match-wins**, so a stray duplicate server key in `~/.mcp.json` would silently shadow the Claude entry. We don't create `~/.mcp.json`. |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.<name>]` | TOML, global (not per-project). |
 
-Because Pi piggybacks on `~/.claude.json`, a server only needs to be written in
-**two** places (Claude's JSON + Codex's TOML) to reach all three harnesses.
+Because Pi piggybacks on `~/.claude.json`, one Claude user-scope entry can serve
+both Claude Code and Pi. Add the Codex TOML entry only when that server should
+also be available in Codex.
 
 ## Chrome DevTools MCP
 
@@ -56,8 +57,40 @@ args = ["-y", "chrome-devtools-mcp@latest", "--executablePath=/opt/google/chrome
 ```
 
 `deploy/install.sh` (`ensure_chrome_devtools_mcp`) writes both entries
-idempotently, preserving any existing MCP environment map, and falls back to
-omitting `--executablePath` on machines without `/opt/google/chrome/google-chrome`.
+idempotently. Its shared Claude/Pi stdio injector preserves existing client
+metadata and environment values, and the launcher omits `--executablePath` on
+machines without `/opt/google/chrome/google-chrome`.
+
+## Atlassian Rovo MCP
+
+[Atlassian Rovo MCP](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/using-with-other-supported-mcp-clients/)
+provides Jira, Confluence, and Compass tools under the user's existing Atlassian
+permissions. The current streamable-HTTP endpoint is
+`https://mcp.atlassian.com/v1/mcp/authv2`; Atlassian retires the old `/v1/sse`
+endpoint after June 30, 2026.
+
+Claude Code supports remote-HTTP OAuth natively, but Pi's current
+`claude-mcp-bridge` connects remote HTTP servers without an OAuth provider. We
+therefore use Atlassian's documented [`mcp-remote`](https://github.com/geelen/mcp-remote)
+proxy as the common stdio transport. This avoids separate Claude and Pi config:
+the Pi bridge launches the same proxy entry it discovers in `~/.claude.json`.
+
+### Live entry
+
+Claude Code (also feeds Pi):
+
+```bash
+claude mcp add --scope user rovo -- \
+  npx -y mcp-remote@latest https://mcp.atlassian.com/v1/mcp/authv2
+```
+
+The first connection opens Atlassian's OAuth flow in a browser. After it is
+approved, Claude exposes the server as `rovo`; Pi exposes its tools as
+`mcp__rovo__<tool>` after `/reload`. `deploy/install.sh` (`ensure_rovo_mcp`)
+writes this entry idempotently through the shared atomic Claude/Pi stdio
+injector, preserving existing client metadata and environment values. Rovo is
+intentionally registered only for Claude Code and Pi here; there is no Codex
+entry.
 
 ## Private / machine-local MCP servers
 

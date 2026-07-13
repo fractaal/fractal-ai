@@ -196,90 +196,122 @@ apply_pi_runtime_patches() {
   fi
 }
 
-ensure_chrome_devtools_mcp() {
-  # Chrome DevTools MCP — browser automation/debugging MCP server, wired into
-  # Claude Code / Pi (via ~/.claude.json) and Codex. `--isolated` is deliberate:
-  # every MCP server process gets a temporary Chrome profile instead of sharing
-  # ~/.cache/chrome-devtools-mcp/chrome-profile, so concurrent agents do not
-  # clobber one another's cookies, storage, tabs, or profile lock.
-  local chrome_args_json
-  local chrome_executable="/opt/google/chrome/google-chrome"
-  if [[ -x "$chrome_executable" ]]; then
-    chrome_args_json='["-y", "chrome-devtools-mcp@latest", "--executablePath=/opt/google/chrome/google-chrome", "--isolated"]'
-  else
-    chrome_args_json='["-y", "chrome-devtools-mcp@latest", "--isolated"]'
-  fi
-
-  if ! command -v npx >/dev/null 2>&1; then
-    echo "  WARN: npx not found; skipping Chrome DevTools MCP wiring" >&2
-    return 0
-  fi
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "  WARN: python3 not found; skipping Chrome DevTools MCP wiring" >&2
-    return 0
-  fi
-
-  # Claude Code (also feeds Pi via the claude-mcp-bridge reading ~/.claude.json).
+ensure_claude_pi_stdio_mcp() {
+  local server_name="$1"
+  local display_name="$2"
+  local server_command="$3"
+  shift 3
+  local -a server_args=("$@")
   local claude_json="$HOME/.claude.json"
+
   if [[ -f "$claude_json" ]]; then
+    if ! command -v node >/dev/null 2>&1; then
+      echo "  WARN: node not found; cannot update $display_name in $claude_json" >&2
+      return 0
+    fi
+
     local claude_tmp
-    claude_tmp=$(mktemp)
-    if CHROME_DEVTOOLS_MCP_ARGS="$chrome_args_json" python3 - "$claude_json" >"$claude_tmp" <<'PY'
-import json
-import os
-import pathlib
-import sys
+    claude_tmp=$(mktemp "${claude_json}.tmp.XXXXXX")
+    if node - "$claude_json" "$server_name" "$server_command" "${server_args[@]}" >"$claude_tmp" <<'JS'
+const fs = require("node:fs");
 
-path = pathlib.Path(sys.argv[1])
-data = json.loads(path.read_text())
-servers = data.get("mcpServers")
-if not isinstance(servers, dict):
-    servers = {}
-    data["mcpServers"] = servers
+const [configPath, serverName, command, ...args] = process.argv.slice(2);
+const raw = fs.readFileSync(configPath, "utf8");
+const data = JSON.parse(raw);
+if (!data || Array.isArray(data) || typeof data !== "object") {
+  throw new Error(`${configPath} must contain a JSON object`);
+}
 
-entry = servers.get("chrome-devtools")
-if not isinstance(entry, dict):
-    entry = {}
+const serversAreValid = data.mcpServers && !Array.isArray(data.mcpServers) && typeof data.mcpServers === "object";
+const current = serversAreValid ? data.mcpServers[serverName] : undefined;
+const currentIsValid = current && !Array.isArray(current) && typeof current === "object";
+const envIsValid = currentIsValid && current.env && !Array.isArray(current.env) && typeof current.env === "object";
+const alreadyConfigured =
+  currentIsValid &&
+  envIsValid &&
+  current.type === "stdio" &&
+  current.command === command &&
+  JSON.stringify(current.args) === JSON.stringify(args) &&
+  !("url" in current) &&
+  !("headers" in current);
 
-env = entry.get("env")
-if not isinstance(env, dict):
-    env = {}
+if (alreadyConfigured) {
+  process.stdout.write(raw);
+  process.exit(0);
+}
 
-entry.update({
-    "type": "stdio",
-    "command": "npx",
-    "args": json.loads(os.environ["CHROME_DEVTOOLS_MCP_ARGS"]),
-    "env": env,
-})
-servers["chrome-devtools"] = entry
-sys.stdout.write(json.dumps(data, indent=2) + "\n")
-PY
+if (!serversAreValid) data.mcpServers = {};
+const entry = currentIsValid ? { ...current } : {};
+const env = envIsValid ? entry.env : {};
+
+// Remove fields from remote transports while preserving unrelated client metadata.
+delete entry.url;
+delete entry.headers;
+Object.assign(entry, { type: "stdio", command, args, env });
+data.mcpServers[serverName] = entry;
+process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
+JS
     then
       if ! cmp -s "$claude_json" "$claude_tmp"; then
-        echo "  Registering Chrome DevTools MCP for Claude Code / Pi (isolated profile)" >&2
-        cp -a "$claude_json" "$claude_json.bak-$(date +%Y%m%d-%H%M%S)"
+        echo "  Registering $display_name for Claude Code / Pi" >&2
+        cp -a "$claude_json" "$claude_json.bak-${server_name}-$(date +%Y%m%d-%H%M%S)"
         mv "$claude_tmp" "$claude_json"
       else
         rm "$claude_tmp"
       fi
     else
       rm -f "$claude_tmp"
-      echo "  WARN: failed to update Chrome DevTools MCP in $claude_json" >&2
+      echo "  WARN: failed to update $display_name in $claude_json" >&2
     fi
   elif command -v claude >/dev/null 2>&1; then
-    echo "  Registering Chrome DevTools MCP for Claude Code / Pi (isolated profile)" >&2
-    if [[ -x "$chrome_executable" ]]; then
-      claude mcp add --scope user chrome-devtools -- \
-        npx -y chrome-devtools-mcp@latest --executablePath="$chrome_executable" --isolated >/dev/null 2>&1 \
-        || echo "  WARN: 'claude mcp add chrome-devtools' failed" >&2
-    else
-      claude mcp add --scope user chrome-devtools -- \
-        npx -y chrome-devtools-mcp@latest --isolated >/dev/null 2>&1 \
-        || echo "  WARN: 'claude mcp add chrome-devtools' failed" >&2
-    fi
+    echo "  Registering $display_name for Claude Code / Pi" >&2
+    claude mcp add --scope user "$server_name" -- \
+      "$server_command" "${server_args[@]}" >/dev/null 2>&1 \
+      || echo "  WARN: 'claude mcp add $server_name' failed" >&2
   else
-    echo "  NOTE: ~/.claude.json absent and claude CLI not found; Chrome DevTools MCP not wired for Claude Code / Pi" >&2
+    echo "  NOTE: ~/.claude.json absent and claude CLI not found; $display_name not wired for Claude Code / Pi" >&2
   fi
+}
+
+ensure_rovo_mcp() {
+  # Atlassian Rovo MCP — Jira/Confluence/Compass tools for Claude Code and Pi.
+  # Claude Code can authenticate to the remote HTTP endpoint directly, but Pi's
+  # claude-mcp-bridge has no OAuth provider. Atlassian's documented mcp-remote
+  # proxy gives both harnesses one shared stdio entry in ~/.claude.json.
+  local rovo_url="https://mcp.atlassian.com/v1/mcp/authv2"
+
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "  WARN: npx not found; skipping Atlassian Rovo MCP wiring" >&2
+    return 0
+  fi
+
+  ensure_claude_pi_stdio_mcp \
+    "rovo" "Atlassian Rovo MCP" "npx" \
+    -y mcp-remote@latest "$rovo_url"
+}
+
+ensure_chrome_devtools_mcp() {
+  # Chrome DevTools MCP — browser automation/debugging MCP server, wired into
+  # Claude Code / Pi (via ~/.claude.json) and Codex. `--isolated` is deliberate:
+  # every MCP server process gets a temporary Chrome profile instead of sharing
+  # ~/.cache/chrome-devtools-mcp/chrome-profile, so concurrent agents do not
+  # clobber one another's cookies, storage, tabs, or profile lock.
+  local chrome_executable="/opt/google/chrome/google-chrome"
+  local -a chrome_args
+  if [[ -x "$chrome_executable" ]]; then
+    chrome_args=(-y chrome-devtools-mcp@latest "--executablePath=$chrome_executable" --isolated)
+  else
+    chrome_args=(-y chrome-devtools-mcp@latest --isolated)
+  fi
+
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "  WARN: npx not found; skipping Chrome DevTools MCP wiring" >&2
+    return 0
+  fi
+
+  ensure_claude_pi_stdio_mcp \
+    "chrome-devtools" "Chrome DevTools MCP (isolated profile)" "npx" \
+    "${chrome_args[@]}"
 
   # Codex.
   local codex_cfg="$HOME/.codex/config.toml"
@@ -287,9 +319,7 @@ PY
     if command -v uv >/dev/null 2>&1; then
       local codex_tmp
       codex_tmp=$(mktemp)
-      if CHROME_DEVTOOLS_MCP_ARGS="$chrome_args_json" uv run --quiet --with tomlkit python3 - "$codex_cfg" >"$codex_tmp" <<'PY'
-import json
-import os
+      if uv run --quiet --with tomlkit python3 - "$codex_cfg" "${chrome_args[@]}" >"$codex_tmp" <<'PY'
 import sys
 import tomlkit
 
@@ -302,7 +332,7 @@ if servers is None:
 
 args = tomlkit.array()
 args.multiline(False)
-for arg in json.loads(os.environ["CHROME_DEVTOOLS_MCP_ARGS"]):
+for arg in sys.argv[2:]:
     args.append(arg)
 
 entry = servers.get("chrome-devtools")
@@ -465,8 +495,9 @@ if [[ -d "$pi_bin_source" ]]; then
   link_directory_children "$pi_bin_source" "$HOME/.local/bin"
 fi
 
-# ── Cross-harness MCP servers (Claude Code / Pi / Codex) ──────────────
+# ── Cross-harness MCP servers ─────────────────────────────────────────
 ensure_chrome_devtools_mcp
+ensure_rovo_mcp
 
 # ── Codex portable config (merged into ~/.codex/config.toml, not symlinked) ──
 ensure_codex_config

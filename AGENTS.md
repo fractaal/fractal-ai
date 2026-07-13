@@ -27,9 +27,10 @@ Augment, and Pi. A single source of truth, deployed via symlinks by `deploy/inst
   preserving that file's per-machine/runtime sections (`[projects.*]`, `[marketplaces.*]`,
   `[plugins.*]`, `[hooks.state.*]`, `node_repl`, `[tui.*]`). Only the keys present in
   `codex/config.toml` are managed.
-- `mcp/` — cross-harness MCP server wiring (Chrome DevTools). Not symlinked: `install.sh` injects
-  entries into each harness's runtime config (`~/.claude.json` for Claude Code + Pi's
-  bridge, `~/.codex/config.toml` for Codex). See `mcp/README.md`.
+- `mcp/` — cross-harness MCP server wiring (Chrome DevTools and Atlassian Rovo). Not
+  symlinked: `install.sh` injects entries into harness runtime config (`~/.claude.json`
+  for Claude Code + Pi's bridge, and `~/.codex/config.toml` where Codex is supported).
+  See `mcp/README.md`.
 - `deploy/` — install scripts (POSIX + PowerShell). `install.local.sh` is a GITIGNORED
   machine-local layer sourced last by `install.sh` for private wiring (e.g. internal MCP
   endpoints) that must not live in this public repo.
