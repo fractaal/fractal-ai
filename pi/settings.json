@@ -18,7 +18,8 @@
     "npm:@fractaal/pi-codex-usage-info@0.1.0",
     "git:github.com/fractaal/pi-extension@879cf3d9dd51f5315e98958a7d0ea55e1314da4a",
     "npm:@fractaal/pi-goal-x@0.20.0",
-    "npm:@fractaal/pi-cross-agent-memory@0.2.0"
+    "npm:@fractaal/pi-cross-agent-memory@0.2.0",
+    "git:github.com/DietrichGebert/ponytail"
   ],
   "theme": "dark"
 }
