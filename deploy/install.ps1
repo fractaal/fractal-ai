@@ -213,25 +213,6 @@ function Ensure-PiMcpBridgeCache {
     }
 }
 
-function Apply-PiRuntimePatches {
-    $patchScript = Join-Path (Join-Path (Join-Path $FractalAiHome 'pi') 'patches') 'apply-pi-runtime-patches.mjs'
-    if (-not (Test-Path -Path $patchScript -PathType Leaf)) { return }
-
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-        Write-Warning 'node not found; cannot apply Pi runtime patches'
-        return
-    }
-    if (-not (Get-Command pi -ErrorAction SilentlyContinue)) {
-        Write-Warning 'pi not found; cannot apply Pi runtime patches'
-        return
-    }
-
-    & node $patchScript
-    if ($LASTEXITCODE -ne 0) {
-        throw "Pi runtime patch application failed; inspect $patchScript"
-    }
-}
-
 # Shared sources (portable across all AI tools)
 $deployedInstructionsSource = Join-Path $FractalAiHome 'DEPLOYED-INSTRUCTIONS.md'
 $skillsSource = Join-Path $FractalAiHome 'skills'
@@ -300,7 +281,5 @@ if (Test-Path -Path $piExtensionsSource -PathType Container) {
 if (Test-Path -Path $piBinSource -PathType Container) {
     Link-DirectoryChildren -Source $piBinSource -Target (Join-Path (Join-Path $HOME '.local') 'bin')
 }
-
-Apply-PiRuntimePatches
 
 Warn-StaleSettingsLocal

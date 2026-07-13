@@ -55,6 +55,8 @@ git clone https://github.com/fractaal/fractal-ai.git "$HOME\.fractal-ai"
 & "$HOME\.fractal-ai\deploy\install.ps1"
 ```
 
+Pi requires the [`fractaal/pi`](https://github.com/fractaal/pi) core fork. Its source owns the custom compaction accounting/replay safety, capped indefinite retries, and stop-the-world compaction behavior; these installers intentionally do not patch stock Pi runtimes.
+
 The install scripts symlink into the following locations, backing up any existing files first:
 
 | Source | Target |

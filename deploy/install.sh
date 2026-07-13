@@ -177,25 +177,6 @@ ensure_pi_mcp_bridge_cache() {
   fi
 }
 
-apply_pi_runtime_patches() {
-  local patch_script="$FRACTAL_AI_HOME/pi/patches/apply-pi-runtime-patches.mjs"
-  [[ -f "$patch_script" ]] || return 0
-
-  if ! command -v node >/dev/null 2>&1; then
-    echo "  WARN: node not found; cannot apply Pi runtime patches" >&2
-    return 0
-  fi
-  if ! command -v pi >/dev/null 2>&1; then
-    echo "  WARN: pi not found; cannot apply Pi runtime patches" >&2
-    return 0
-  fi
-
-  if ! node "$patch_script"; then
-    echo "  ERROR: Pi runtime patch application failed; inspect $patch_script" >&2
-    return 1
-  fi
-}
-
 ensure_claude_pi_stdio_mcp() {
   local server_name="$1"
   local display_name="$2"
@@ -501,8 +482,6 @@ ensure_rovo_mcp
 
 # ── Codex portable config (merged into ~/.codex/config.toml, not symlinked) ──
 ensure_codex_config
-
-apply_pi_runtime_patches
 
 # ── Machine-local / private wiring (gitignored). Sourced last so it can use the
 #    helpers/env above; holds anything whose details must not be in this public
