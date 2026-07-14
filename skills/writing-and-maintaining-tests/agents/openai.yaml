@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing and Maintaining Tests"
+  short_description: "Write behavior-first tests that survive refactors"
+  default_prompt: "Use $writing-and-maintaining-tests to design or review tests around stable behavior and forbidden side effects."
