@@ -1,40 +1,44 @@
 ---
 name: prove-why-this-needs-to-exist
 description: >-
-  INVOKE/LOAD when proposing, designing, implementing, or reviewing any new
-  feature, field, flag, metadata property, abstraction, helper, dependency,
-  service, endpoint, schema, migration, status enum, config knob, or line of
-  code whose necessity is not already proven — AND whenever a bespoke mechanism
-  is about to replace an ecosystem paved path (hand-rolled schedulers, queues,
-  caches, retries, auth/crypto, parsers, custom build/packaging/delivery
-  schemes, vendored artifacts, runtime codegen, compensating checkers). Use
-  when the question is "can this be simpler?", "why does this
-  exist?", "is this taxonomy/wrapper/field real or AI architecture cosplay?",
-  "why not just do it the normal way?", or Ben says "yo what the hell is this?",
-  "don't be a rockstar", "stop bodging", "do it the boring way", "pit of
-  success".
+  INVOKE/LOAD at an architecture or product boundary when proposing or reviewing
+  durable structure: a service, schema, dependency, persisted field or flag,
+  endpoint, migration, config surface, lifecycle abstraction, or bespoke
+  mechanism. Also use when such a thing's necessity is disputed or it may replace
+  an ecosystem paved path (hand-rolled schedulers, queues, caches, retries,
+  auth/crypto, parsers, packaging, or delivery). Do NOT use for ordinary coding,
+  local helpers, routine refactors, or bug fixes whose requirement and architecture
+  are already established; Ponytail handles minimal implementation. Trigger on
+  "why does this exist?", "AI architecture cosplay", "why not do it the normal
+  way?", "stop bodging", "paved path", or "pit of success".
 ---
 
 # Prove Why This Needs To Exist
 
 The burden of proof is on complexity.
 
-Treat every proposed unit of implementation like an early NASA launch decision:
-**prove why we can launch today** becomes **prove why this thing needs to exist**.
-Not because delay is virtuous. Because unearned structure is a liability the
-user will pay for forever.
+Use this skill at the architecture or product boundary, when a proposal creates
+something durable that future code and operators must carry. Once the requirement
+and architecture are established, stop running this gate against routine code;
+use Ponytail to implement it minimally.
+
+Treat each durable proposal like an early NASA launch decision: **prove why we
+can launch today** becomes **prove why this thing needs to exist**. Not because
+delay is virtuous. Because unearned structure is a liability the user will pay
+for forever.
 
 This skill is not a request for elegant-sounding architecture. It is a brake on
-AI-agent overbuilding: fields that restate each other, wrappers that wrap
-nothing, flags nobody needs, categories that describe obvious facts, and
-"safety/UX metadata" that never changes a real decision.
+AI-agent overbuilding: persisted fields that restate each other, durable wrappers
+that wrap nothing, flags nobody needs, categories that describe obvious facts,
+and "safety/UX metadata" that never changes a real decision.
 
 ## The Gate
 
 Before adding the thing, answer these in plain language:
 
 1. **What is the thing?**
-   Name the exact feature/field/type/helper/flag/line/abstraction being proposed.
+   Name the exact service, schema, dependency, persisted field/flag, endpoint,
+   migration, config surface, lifecycle abstraction, or bespoke mechanism.
 
 2. **What decision or behavior does it enable?**
    If no user-visible or system-critical behavior changes because this exists,

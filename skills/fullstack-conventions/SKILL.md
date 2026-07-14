@@ -1,17 +1,17 @@
 ---
 name: fullstack-conventions
 description: >-
-  Ben's default stack and conventions for building a client<->server TypeScript
+  Ben's default stack and conventions for building a client-server TypeScript
   application from scratch — frontend, backend, and the typed contract between
   them. Load this WHENEVER standing up a new web app, package, or service;
   scaffolding a monorepo; laying out frontend/backend/API structure; setting up
   tRPC, a Hono/Fastify backend, a Vite + React SPA, TanStack Router/Query,
   Zustand, or Tailwind/shadcn; defining the shapes/procedures that cross the
-  client<->server boundary; deciding where shared types live; or weighing runtime
+  client-server boundary; deciding where shared types live; or weighing runtime
   validation (Zod), a data-fetching library, a state manager, or a metaframework.
   Especially load it on GREENFIELD work, where these defaults are cheap to set
-  and expensive to change later. Portable principles plus a concrete, decided TS
-  reference stack. Keywords: greenfield, new app, new service, scaffolding,
+  and expensive to change later. Keywords: greenfield, new app, new service,
+  scaffolding,
   monorepo, tRPC, Hono, Fastify, Vite, React, TanStack Router, TanStack Query,
   React Query, Zustand, Tailwind, shadcn, Zod, contract, DTO, data contract, API
   boundary, error handling, OpenAPI, oRPC, SPA, metaframework.
@@ -111,9 +111,10 @@ how you turn "silent shape drift" back into "the build breaks."
 ### 2. Less code; earn every abstraction
 Every line is a liability. Three similar lines beat a premature abstraction. Long
 but readable beats terse and arcane (plain if/else over a nested ternary). Full
-names, no cryptic abbreviations. Before adding a field, flag, procedure, wrapper,
-or dependency, prove the simpler version is insufficient. See
-`prove-why-this-needs-to-exist`.
+names, no cryptic abbreviations. At the architecture boundary, prove each durable
+schema field, contract flag or procedure, framework wrapper, and dependency earns
+its existence; see `prove-why-this-needs-to-exist`. For ordinary implementation,
+use Ponytail's simplest working path instead.
 
 ### 3. Loud failures over silent fallbacks
 When something can't be done, throw with a message saying what was expected and
@@ -288,7 +289,7 @@ Before approving frontend / backend / contract work:
 - Any port/host baked into code or a durable path?
 - UI: loading/error/empty states, keyboard, responsive? Do exit animations play
   (element kept mounted)?
-- Is any new field/flag/procedure/dependency provably necessary?
+- Is each new durable schema field, contract flag/procedure, or dependency provably necessary?
 
 ---
 
