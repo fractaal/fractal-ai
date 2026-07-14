@@ -107,16 +107,7 @@
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "ponytail@ponytail": true
-  },
-  "extraKnownMarketplaces": {
-    "ponytail": {
-      "source": {
-        "source": "github",
-        "repo": "DietrichGebert/ponytail"
-      }
-    }
+    "skill-creator@claude-plugins-official": true
   },
   "effortLevel": "xhigh",
   "promptSuggestionEnabled": false,
