@@ -108,6 +108,20 @@ remove_legacy_skill_link() {
 # string-difference between `~/...` and `$HOME-substituted/...` defeats
 # dedup), so leaving them risks every Stop/Edit firing the gates twice.
 PI_MCP_BRIDGE_COMMIT="879cf3d9dd51f5315e98958a7d0ea55e1314da4a"
+BLENDER_MCP_SERVER_VERSION="1.6.4"
+BLENDER_MCP_ADDON_COMMIT="6641189231caf3752302ae20591bc87fda85fc4e"
+BLENDER_MCP_ADDON_SHA256="bba60831f5f89a74deda0294b131668a086cf46eb35a6a01abbd0d21d9e92630"
+
+file_sha256() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
 
 warn_stale_settings_local() {
   local target="$HOME/.claude/settings.local.json"
@@ -252,6 +266,114 @@ JS
   else
     echo "  NOTE: ~/.claude.json absent and claude CLI not found; $display_name not wired for Claude Code / Pi" >&2
   fi
+}
+
+ensure_blender_mcp_addon() {
+  # BlenderMCP publishes its MCP server through PyPI, but distributes the
+  # Blender-side add-on as one raw addon.py rather than a versioned Blender
+  # Extension. Keep the immutable upstream revision here and install the fetched
+  # source under fractal-ai's generated runtime layer; Blender receives a symlink.
+  local blender_bin=""
+  if command -v blender >/dev/null 2>&1; then
+    blender_bin=$(command -v blender)
+  elif [[ -x "/Applications/Blender.app/Contents/MacOS/Blender" ]]; then
+    blender_bin="/Applications/Blender.app/Contents/MacOS/Blender"
+  else
+    echo "  NOTE: Blender not found; skipping BlenderMCP add-on installation" >&2
+    return 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1 || ! file_sha256 /dev/null >/dev/null 2>&1; then
+    echo "  WARN: curl and a SHA-256 tool are required to install the pinned BlenderMCP add-on" >&2
+    return 1
+  fi
+
+  local install_dir="$FRACTAL_AI_HOME/.installed/blender-mcp/$BLENDER_MCP_ADDON_COMMIT"
+  local addon_source="$install_dir/blender_mcp.py"
+  local addon_url="https://raw.githubusercontent.com/ahujasid/blender-mcp/$BLENDER_MCP_ADDON_COMMIT/addon.py"
+  local actual_sha=""
+  if [[ -f "$addon_source" ]]; then
+    actual_sha=$(file_sha256 "$addon_source")
+  fi
+  if [[ "$actual_sha" != "$BLENDER_MCP_ADDON_SHA256" ]]; then
+    echo "  Installing pinned BlenderMCP add-on $BLENDER_MCP_ADDON_COMMIT" >&2
+    mkdir -p "$install_dir"
+    local addon_tmp="$addon_source.tmp.$$"
+    if ! curl -fsSL "$addon_url" -o "$addon_tmp"; then
+      rm -f "$addon_tmp"
+      echo "  WARN: failed to download BlenderMCP add-on" >&2
+      return 1
+    fi
+    actual_sha=$(file_sha256 "$addon_tmp")
+    if [[ "$actual_sha" != "$BLENDER_MCP_ADDON_SHA256" ]]; then
+      rm -f "$addon_tmp"
+      echo "  WARN: BlenderMCP add-on checksum mismatch; refusing to install" >&2
+      return 1
+    fi
+    mv "$addon_tmp" "$addon_source"
+  fi
+
+  local addon_dir
+  addon_dir=$(
+    "$blender_bin" --background --python-exit-code 1 --python-expr \
+      "import bpy; print('FRACTAL_BLENDER_ADDONS=' + bpy.utils.user_resource('SCRIPTS', path='addons', create=True))" \
+      2>/dev/null \
+      | sed -n 's/^FRACTAL_BLENDER_ADDONS=//p' \
+      | tail -1
+  )
+  if [[ -z "$addon_dir" ]]; then
+    echo "  WARN: Blender did not report its add-on directory" >&2
+    return 1
+  fi
+
+  link_item "$addon_source" "$addon_dir/blender_mcp.py"
+
+  # Enable globally for future GUI launches. Background Blender intentionally
+  # refuses to start the live socket, but can safely persist the enabled add-on
+  # and disable its preference-level telemetry before the next GUI launch.
+  if ! "$blender_bin" --background --python-exit-code 1 --python-expr '
+import bpy
+changed = False
+if "blender_mcp" not in bpy.context.preferences.addons:
+    bpy.ops.preferences.addon_enable(module="blender_mcp")
+    changed = True
+addon = bpy.context.preferences.addons.get("blender_mcp")
+if addon and addon.preferences.telemetry_consent:
+    addon.preferences.telemetry_consent = False
+    changed = True
+if changed:
+    bpy.ops.wm.save_userpref()
+assert "blender_mcp" in bpy.context.preferences.addons
+' >/dev/null; then
+    echo "  WARN: BlenderMCP add-on was installed but could not be enabled" >&2
+    return 1
+  fi
+  return 0
+}
+
+ensure_blender_mcp() {
+  # BlenderMCP — live scene inspection/manipulation in the open Blender GUI.
+  # The stdio server lazily connects to the add-on's localhost-only socket.
+  # Telemetry is disabled completely at the server boundary; the Blender add-on
+  # preference is also disabled by ensure_blender_mcp_addon above.
+  if ! command -v uvx >/dev/null 2>&1; then
+    echo "  WARN: uvx not found; skipping Blender MCP wiring" >&2
+    return 0
+  fi
+  local uvx_bin
+  uvx_bin=$(command -v uvx)
+
+  if ! ensure_blender_mcp_addon; then
+    echo "  WARN: Blender MCP server wiring skipped because the Blender add-on is unavailable" >&2
+    return 0
+  fi
+  ensure_claude_pi_stdio_mcp \
+    "blender" "Blender MCP (live GUI scene)" "env" \
+    DISABLE_TELEMETRY=true \
+    BLENDER_HOST=localhost \
+    BLENDER_PORT=9876 \
+    UV_PYTHON_PREFERENCE=only-managed \
+    "$uvx_bin" --python 3.11 "blender-mcp==$BLENDER_MCP_SERVER_VERSION"
 }
 
 ensure_rovo_mcp() {
@@ -479,6 +601,7 @@ fi
 # ── Cross-harness MCP servers ─────────────────────────────────────────
 ensure_chrome_devtools_mcp
 ensure_rovo_mcp
+ensure_blender_mcp
 
 # ── Codex portable config (merged into ~/.codex/config.toml, not symlinked) ──
 ensure_codex_config

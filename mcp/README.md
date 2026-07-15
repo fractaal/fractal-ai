@@ -61,6 +61,54 @@ idempotently. Its shared Claude/Pi stdio injector preserves existing client
 metadata and environment values, and the launcher omits `--executablePath` on
 machines without `/opt/google/chrome/google-chrome`.
 
+## Blender MCP
+
+[`ahujasid/blender-mcp`](https://github.com/ahujasid/blender-mcp) provides live
+inspection and `bpy` execution against the currently open Blender GUI. The
+Blender add-on owns a localhost socket (default `9876`); the `blender-mcp`
+stdio server translates MCP tools into that socket protocol. It deliberately
+does not run under Blender's background mode, so deterministic headless renders
+remain separate from interactive scene authoring.
+
+`deploy/install.sh` installs this in two coordinated parts:
+
+- the PyPI MCP server is pinned to `blender-mcp==1.6.4` and registered in
+  `~/.claude.json`, which serves Claude Code and Pi's MCP bridge;
+- upstream's raw Blender `addon.py` is pinned by immutable commit + SHA-256,
+  downloaded into `~/.fractal-ai/.installed/blender-mcp/`, symlinked into the
+  active Blender version's native add-on directory, and enabled in Blender's
+  user preferences.
+
+The MCP process is launched with `DISABLE_TELEMETRY=true`, and the add-on's
+telemetry preference is also disabled. `BLENDER_HOST=localhost` and
+`BLENDER_PORT=9876` keep the transport machine-local. This is still an
+arbitrary-code boundary: `execute_blender_code` can run Python with the same
+permissions as Blender, so only trusted local MCP clients should be configured.
+
+Only one separately launched Blender GUI process can own port `9876`. Open the
+intended `.blend` first (for STAGE, use **Open in Blender** on the Blender clip),
+then reload the agent harness so its `mcp__blender__*` tools connect to that
+process. Another Blender process will fail to claim the port. Multiple windows
+or scenes inside the owning process share its one server and can make the active
+context ambiguous, so keep the MCP-owning process focused on the intended scene.
+
+### Live entry (Claude Code and Pi)
+
+```json
+{
+  "type": "stdio",
+  "command": "env",
+  "args": [
+    "DISABLE_TELEMETRY=true",
+    "BLENDER_HOST=localhost",
+    "BLENDER_PORT=9876",
+    "UV_PYTHON_PREFERENCE=only-managed",
+    "/absolute/path/to/uvx", "--python", "3.11", "blender-mcp==1.6.4"
+  ],
+  "env": {}
+}
+```
+
 ## Atlassian Rovo MCP
 
 [Atlassian Rovo MCP](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/using-with-other-supported-mcp-clients/)
