@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# PATH shim: refuse ydotool inside the agent desktop.
+#
+# ydotool writes to /dev/uinput, creating a kernel evdev device. That device is
+# picked up by libinput and delivered to seat0 — Ben's real session. The nested
+# compositor has no libinput backend at all (its device list is just
+# wl_pointer/wl_keyboard proxied from the parent), so ydotool input can never
+# reach the agent desktop. It only ever types into Ben's screen.
+#
+# Failing loudly here turns a silent wrong-session action into an error.
+
+cat >&2 <<'EOF'
+ydotool is blocked inside the agent desktop.
+
+It injects at the kernel uinput layer, which routes to seat0 — Ben's real
+session — never this nested compositor. Using it would type into his screen.
+
+Use socket-scoped tools instead (they target WAYLAND_DISPLAY/the instance):
+  wtype 'some text'
+  wtype -k Return
+  hyprctl dispatch movecursor <X> <Y>
+  hyprctl dispatch sendshortcut ',mouse:272,activewindow'    # left click
+  grim out.png                                               # or: agentdesk shot
+EOF
+exit 1

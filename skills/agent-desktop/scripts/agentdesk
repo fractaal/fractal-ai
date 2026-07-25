@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+# agentdesk — a nested Hyprland desktop an agent can drive without stealing
+#             focus from, or spawning windows in, Ben's live session.
+#
+#   agentdesk start              launch the agent desktop
+#   agentdesk run <cmd> [args…]  run a command INSIDE it (env pinned)
+#   agentdesk shot [out.png]     screenshot it
+#   agentdesk stop               shut it down
+#   agentdesk status             what's running
+#   agentdesk env                print export lines, for `eval`
+#
+# WHY THIS SCRIPT EXISTS
+#   Isolation here is real but conditional: it holds only while
+#   WAYLAND_DISPLAY and HYPRLAND_INSTANCE_SIGNATURE are correct on EVERY
+#   command. Setting them by hand across a few hundred tool calls is where it
+#   goes wrong, and the failure mode is Ben's cursor jumping mid-sentence —
+#   exactly the annoyance this exists to delete. `agentdesk run` makes the
+#   correct environment ambient so the laziest move is the correct one.
+#
+# WHAT THIS IS NOT
+#   Not a security boundary. Same uid, same $HOME, same everything. It
+#   contains focus and windows. It does not contain a hostile process.
+
+set -euo pipefail
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE="$RUNTIME/agentdesk.instance"
+LOG="$RUNTIME/agentdesk.log"
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+CONF="${AGENTDESK_CONF:-$HERE/agentdesk.conf}"
+SHIMS="$HERE/shims"
+
+die() { printf 'agentdesk: %s\n' "$*" >&2; exit 1; }
+
+instances() { hyprctl instances -j 2>/dev/null || echo '[]'; }
+
+# Print the signature of the live agent desktop; return 1 if there isn't one.
+# Validates against hyprctl rather than trusting the state file, so a stale
+# file after a crash or logout self-heals instead of targeting a dead instance.
+live_sig() {
+    [[ -f "$STATE" ]] || return 1
+    local sig
+    sig="$(<"$STATE")"
+    [[ -n "$sig" ]] || return 1
+    instances | jq -e --arg s "$sig" 'any(.[]; .instance == $s)' >/dev/null 2>&1 || return 1
+    printf '%s' "$sig"
+}
+
+sock_of() { instances | jq -r --arg s "$1" '.[] | select(.instance == $s) | .wl_socket'; }
+pid_of() { instances | jq -r --arg s "$1" '.[] | select(.instance == $s) | .pid'; }
+
+require_live() {
+    local sig
+    sig="$(live_sig)" || die "no agent desktop running — run 'agentdesk start' first"
+    printf '%s' "$sig"
+}
+
+hypr_in() {
+    local sig="$1"; shift
+    env HYPRLAND_INSTANCE_SIGNATURE="$sig" XDG_RUNTIME_DIR="$RUNTIME" hyprctl "$@"
+}
+
+cmd_start() {
+    local sig
+    if sig="$(live_sig)"; then
+        printf 'agentdesk: already running (%s on %s)\n' "$sig" "$(sock_of "$sig")" >&2
+        cmd_env
+        return 0
+    fi
+
+    # Hyprland cannot run standalone-headless: aquamarine ships a headless
+    # backend but Hyprland exposes no way to select it as the primary one, and
+    # starting with no DRM and no parent Wayland dies in CBackend::create().
+    # So a parent compositor is mandatory.
+    [[ -n "${WAYLAND_DISPLAY:-}" ]] || \
+        die "no parent Wayland session; nested Hyprland requires one"
+    [[ -r "$CONF" ]] || die "config not readable: $CONF"
+    command -v jq >/dev/null || die "jq is required"
+
+    local before
+    before="$(instances | jq -r '.[].instance')"
+
+    # Launch through start-hyprland when present. Calling Hyprland directly
+    # works, but it toasts "started without start-hyprland" on every launch,
+    # which is noise in a window a human is meant to glance at. The wrapper
+    # forwards everything after `--` to Hyprland.
+    if command -v start-hyprland >/dev/null; then
+        setsid env -u HYPRLAND_INSTANCE_SIGNATURE \
+            XDG_RUNTIME_DIR="$RUNTIME" \
+            start-hyprland -- --config "$CONF" >"$LOG" 2>&1 </dev/null &
+    else
+        setsid env -u HYPRLAND_INSTANCE_SIGNATURE \
+            XDG_RUNTIME_DIR="$RUNTIME" \
+            Hyprland --config "$CONF" >"$LOG" 2>&1 </dev/null &
+    fi
+
+    local waited=0
+    while (( waited < 200 )); do
+        sig="$(instances | jq -r '.[].instance' | grep -vxF "$before" | head -1 || true)"
+        [[ -n "$sig" ]] && break
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+
+    if [[ -z "$sig" ]]; then
+        printf -- '--- last 20 lines of %s ---\n' "$LOG" >&2
+        tail -20 "$LOG" >&2 || true
+        die "agent desktop failed to start"
+    fi
+
+    printf '%s' "$sig" >"$STATE"
+    printf 'agentdesk: started %s on %s (pid %s)\n' \
+        "$sig" "$(sock_of "$sig")" "$(pid_of "$sig")" >&2
+    cmd_env
+}
+
+cmd_run() {
+    [[ $# -gt 0 ]] || die "usage: agentdesk run <cmd> [args…]"
+    local sig sock
+    sig="$(require_live)"
+    sock="$(sock_of "$sig")"
+
+    # NOTE: `env` requires -u BEFORE any assignments, or it treats -u as the
+    # command name. Both leak vectors are closed here:
+    #   DISPLAY  — inherited :0 would send X11 clients to the PARENT's
+    #              Xwayland, i.e. Ben's screen. Unset, and force Wayland
+    #              backends so apps fail loudly rather than land there.
+    #   PATH     — shims/ intercepts ydotool, which injects via kernel uinput
+    #              and therefore always reaches seat0 (Ben), never this nested
+    #              compositor, which has no libinput devices at all.
+    exec env -u DISPLAY \
+        WAYLAND_DISPLAY="$sock" \
+        HYPRLAND_INSTANCE_SIGNATURE="$sig" \
+        XDG_RUNTIME_DIR="$RUNTIME" \
+        XDG_CURRENT_DESKTOP=Hyprland \
+        XDG_SESSION_TYPE=wayland \
+        QT_QPA_PLATFORM=wayland \
+        GDK_BACKEND=wayland \
+        MOZ_ENABLE_WAYLAND=1 \
+        ELECTRON_OZONE_PLATFORM_HINT=wayland \
+        AGENTDESK=1 \
+        PATH="$SHIMS:$PATH" \
+        "$@"
+}
+
+cmd_shot() {
+    local sig sock out
+    sig="$(require_live)"
+    sock="$(sock_of "$sig")"
+    out="${1:-$RUNTIME/agentdesk-shot.png}"
+    command -v grim >/dev/null || die "grim is required for screenshots"
+    env WAYLAND_DISPLAY="$sock" XDG_RUNTIME_DIR="$RUNTIME" grim "$out"
+    printf '%s\n' "$out"
+}
+
+cmd_stop() {
+    local sig
+    if ! sig="$(live_sig)"; then
+        rm -f "$STATE"
+        printf 'agentdesk: not running\n' >&2
+        return 0
+    fi
+    hypr_in "$sig" dispatch exit >/dev/null 2>&1 || true
+    local waited=0
+    while (( waited < 50 )) && instances | jq -e --arg s "$sig" 'any(.[]; .instance == $s)' >/dev/null 2>&1; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    rm -f "$STATE"
+    printf 'agentdesk: stopped %s\n' "$sig" >&2
+}
+
+cmd_status() {
+    local sig
+    if ! sig="$(live_sig)"; then
+        printf 'agentdesk: not running\n'
+        return 1
+    fi
+    printf 'instance : %s\n' "$sig"
+    printf 'socket   : %s\n' "$(sock_of "$sig")"
+    printf 'pid      : %s\n' "$(pid_of "$sig")"
+    printf 'windows  :\n'
+    hypr_in "$sig" clients -j | jq -r '.[] | "  \(.class)  —  \(.title)"' 2>/dev/null || true
+}
+
+cmd_env() {
+    local sig sock
+    sig="$(require_live)"
+    sock="$(sock_of "$sig")"
+    printf 'export WAYLAND_DISPLAY=%s\n' "$sock"
+    printf 'export HYPRLAND_INSTANCE_SIGNATURE=%s\n' "$sig"
+    printf 'unset DISPLAY\n'
+}
+
+case "${1:-}" in
+    start)  shift; cmd_start "$@" ;;
+    run)    shift; cmd_run "$@" ;;
+    shot)   shift; cmd_shot "$@" ;;
+    stop)   shift; cmd_stop "$@" ;;
+    status) shift; cmd_status "$@" ;;
+    env)    shift; cmd_env "$@" ;;
+    ""|-h|--help)
+        sed -n '2,16p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'
+        ;;
+    *) die "unknown subcommand: $1 (try --help)" ;;
+esac
