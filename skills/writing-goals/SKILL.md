@@ -175,11 +175,12 @@ the goal text so the model can recall and act on them):
 2. **Diff-shaped briefs muzzle peer agents.** Briefing Codex with
    "current code: X, change to: Y" or "do only these N patches,
    nothing else" wastes the engineer's code-level insight and demotes
-   them from peer to hands. Brief at the INTENT level — what to
-   achieve and why — and let the peer decide how. See
-   `feedback_peer_briefing_intent_level.md`. The project CLAUDE.md is
-   usually explicit too: "DO NOT write subagent prompts that say
-   'don't touch X' or 'this is a SEPARATE follow-up task.'"
+   them from peer to hands. Brief at the INTENT level: what to achieve
+   and why, then let the peer decide how. Include the accepted contract,
+   prohibited side effects, and explicit non-goals. Those product
+   boundaries are not implementation micromanagement. The peer may
+   challenge them with evidence but does not silently expand them. See
+   `feedback_peer_briefing_intent_level.md`.
 
 3. **Wrong Codex invocation sandboxes the agent.** Use
    `codex exec --dangerously-bypass-approvals-and-sandbox`, NOT

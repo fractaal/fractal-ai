@@ -17,14 +17,19 @@ That is the class of failure this checklist prevents.
 
 Before anything else, make sure you actually understand what you're being asked to do. Not what you THINK you're being asked. What you're ACTUALLY being asked.
 
-### Restate the task
+### Restate the task and write the accepted contract
 
 In your own words, state:
 1. What is the user asking for?
-2. What does "done" look like? What would the user see/experience when this works?
-3. What are the boundaries? What's in scope and what isn't?
+2. What does "done" look like? What would the user see or experience when this works?
+3. What side effects are explicitly prohibited?
+4. What is deliberately WONTFIX or undefined behavior?
+5. Which existing mechanisms should be reused?
+6. What is the rough complexity expectation?
 
 If you can't answer #2 concretely ("the user sends /gpt-5.4 and gets a response from GPT-5.4 via OpenRouter"), you don't understand the task well enough to implement it. Ask clarifying questions.
+
+The accepted contract controls implementation scope. WONTFIX and undefined-behavior exclusions are not self-authorized: they must come from Ben or the accepted source brief, or be explicitly proposed to Ben and accepted before they control scope. Never invent an exclusion after discovering a defect. Research may reveal a missing requirement or prove a boundary unsafe, but discovery does not automatically expand the contract. Classify new work as required, a boundary challenge, or outside contract before acting. If the implementation materially exceeds the complexity expectation, stop and reassess the approach rather than normalizing the growth.
 
 ### Identify the end-to-end path
 
@@ -203,7 +208,7 @@ Each subagent gets:
 - The ability to flag integration gaps
 - An understanding of what OTHER subtasks exist and how their work connects
 
-DO NOT tell subagents "don't touch X" or "wiring is a separate task." That is how half-built features ship. The subagent sees the whole picture or it CANNOT DO ITS JOB.
+Do not conceal relevant system context or prohibit subagents from inspecting adjacent paths. Explicit scope is different from muzzling: give them the accepted contract, including WONTFIX and undefined behavior. They may challenge a boundary with concrete evidence, but they do not gain authority to expand the product guarantee.
 
 ---
 
@@ -227,12 +232,14 @@ An unverified assumption is a bomb in your implementation. It might be fine. It 
 You may proceed to implementation ONLY when:
 
 1. You can state what "done" looks like concretely
-2. You've traced the end-to-end path and every link either exists or is explicitly in your build plan
-3. You've checked what already exists and aren't rebuilding it
-4. You've verified every external dependency is available and configured
-5. You've confirmed your approach aligns with the system's architecture
-6. You've listed your assumptions and verified each one
-7. If decomposing, every subtask is end-to-end and there are no gaps
-8. If the feature touches shared mutable state, you've enumerated every writer and verified the coordination primitive holds in the real deployment environment
+2. The accepted contract names promised behavior, prohibited side effects, Ben-accepted WONTFIX or undefined behavior, existing mechanisms to reuse, and a rough complexity expectation
+3. You've traced the end-to-end path and every required link either exists or is explicitly in your build plan
+4. You've checked what already exists and aren't rebuilding it
+5. You've verified every external dependency is available and configured
+6. You've confirmed your approach aligns with the system's architecture
+7. You've listed your assumptions and verified each one
+8. If decomposing, every required subtask is end-to-end and there are no gaps
+9. If the feature touches shared mutable state, you've enumerated every writer relevant to the accepted guarantee and verified the coordination primitive holds in the real deployment environment
+10. Any discovered work outside the accepted contract is classified rather than silently implemented
 
 If ANY of these are incomplete, you are not ready to write code. Do the research. It's faster than debugging a wrong assumption 3 hours into implementation.

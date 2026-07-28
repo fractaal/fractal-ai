@@ -1,11 +1,11 @@
 ---
 name: post-implementation-checklist
-description: "INVOKE/LOAD BEFORE SAYING 'DONE' ON ANY IMPLEMENTATION TASK. Multi-dimensional verification: end-to-end trace, parallel code review, dead code scan, subagent work acceptance, cross-service contract check. This is not optional. This is the gate between 'I wrote code' and 'the feature works.' Skipping this skill is equivalent to lying to the user."
+description: "INVOKE/LOAD BEFORE SAYING 'DONE' ON ANY IMPLEMENTATION TASK. Multi-dimensional verification: end-to-end trace, independent code review with finding adjudication, dead code scan, subagent work acceptance, and cross-service contract checks. Use as the completion gate for implementation work."
 ---
 
 # Post-Implementation Checklist
 
-You are about to tell the user the work is done. STOP. You are not done until you've run every check in this skill. "Tests pass" is not done. "Code review clean" is not done. Done means: the feature works end-to-end, nothing is dead, nothing is broken, and you've verified — not assumed — every link in the chain.
+You are about to tell the user the work is done. STOP. You are not done until you've run every check relevant to the accepted contract. "Tests pass" is not done. "Code review clean" is not done. Done means: the promised behavior works end-to-end, prohibited side effects do not occur, and you've verified rather than assumed every required link in the chain. Verification discovers evidence; it does not silently expand the product contract.
 
 This skill exists because of a specific, real failure: a model routing feature was "shipped" with aliases for 10 OpenRouter models that Pi couldn't actually serve. 45 tests passed. The code review said SHIP. The system notification told users "Using GPT-5.4 for this turn" while silently giving them Sonnet. Nobody caught it because nobody traced the end-to-end path. Tests verified string manipulation. The code reviewer checked architecture. Nobody asked "but can Pi actually route a request to OpenRouter?"
 
@@ -84,6 +84,17 @@ Dispatch the `code-reviewer` skill in an isolated subagent with this mandate:
 
 Do NOT spawn multiple reviewers by habit. Add a second reviewer only when there is a clear reason: very high-risk production change, unfamiliar security/infra surface, unusually broad cross-service migration, or explicit user request. If cost or latency matters, one reviewer is enough.
 
+### Adjudicate findings before changing code
+
+A reviewer reports evidence; the implementer or Mission Control owns scope adjudication. Classify every reviewer item:
+
+- **Accept:** It violates promised behavior, causes a prohibited side effect, or proves an explicit boundary incoherent. Fix it.
+- **Reject:** It is factually incorrect, unsupported, or already covered.
+- **Outside contract:** It is valid but asks for a stronger guarantee, optional hardening, unrelated cleanup, or a theoretical edge. Do not implement it unless Ben expands the contract.
+- **Escalate:** It presents concrete evidence that an accepted WONTFIX or undefined-behavior boundary conflicts with the contract, security, or data integrity and needs Ben's decision.
+
+Review converges when all accepted findings are resolved and a fresh review finds no in-contract blockers. Rejected or outside-contract observations remain recorded with rationale, but they do not reset convergence. Never fix a finding merely to obtain a `SHIP` verdict.
+
 ---
 
 ## Phase 4: Subagent Work Acceptance
@@ -137,7 +148,7 @@ For every HTTP endpoint or payload you changed:
 
 After completing all phases, state your confidence level honestly:
 
-- **"The feature works end-to-end. I traced it. I verified the dependencies. I read the subagent code. The isolated reviewer is clean."** → You can say done.
+- **"The accepted feature works end-to-end. I traced it. I verified the dependencies. I read the subagent code. The isolated reviewer found no unresolved in-contract blockers."** → You can say done.
 - **"Tests pass and architecture looks clean, but I haven't traced the end-to-end path for [specific feature]."** → You are NOT done. Go trace it.
 - **"I'm not sure if [dependency/provider/config] is actually wired."** → You are NOT done. Go check.
 - **"The subagent said it's done and I trust the summary."** → You are NOT done. You haven't verified. Go read the code.
@@ -148,7 +159,7 @@ If your confidence statement has ANY hedge ("I think," "it should," "the subagen
 
 ## The Standard
 
-The bar is not "I believe it works." The bar is "I have personally verified every link in the chain and can explain exactly what happens when a user exercises this feature." That is done. Everything else is in-progress.
+The bar is not "I believe it works." The bar is "I have personally verified every required link in the accepted contract and can explain exactly what happens when a user exercises this feature." That is done. Optional stronger guarantees remain outside scope unless the contract changes.
 
 ---
 
@@ -168,7 +179,7 @@ These are the implementation standards that apply DURING the work, before this c
 - Treat every implementation as production-grade
 - Prefer clarity over cleverness
 - Follow consistent naming conventions and imports
-- Handle edge cases and input validation unless explicitly told not to
+- Handle edge cases required by the accepted contract, plus trust-boundary validation and failures that threaten security or data integrity
 - Maintain architectural discipline (controllers → orchestration, services → logic, repositories → data)
 - Explain WHY in comments, not WHAT
 

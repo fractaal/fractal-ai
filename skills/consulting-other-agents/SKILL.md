@@ -357,14 +357,18 @@ every line that matches the left column:
 | "Change line 292 to `raise HTTPException(400, …)`" | "A non-dict request body should fail loud as a 400, not crash into a 500." |
 | Exact `old_string` → `new_string` diff blocks | "The API truncates oversized input silently by default — wrong for an indexer. Address it." |
 | Full method signatures with type hints | "Match the lifecycle pattern already in `src/main.py`." |
-| "Do ONLY these N things, nothing else" | "Here is the full picture, and the parts I think matter most — your call on the rest." |
-| "Don't touch X" / "X is a separate task" | *(delete it — give the full context and let the peer flag what actually connects)* |
+| "Do ONLY these N implementation steps" | "Here is the accepted outcome and its explicit non-goals. Choose the minimum implementation that satisfies it." |
+| "Don't touch X" used to hide connected required work | *(delete it; give the full context and let the peer expose the gap)* |
+| "X is an accepted WONTFIX or undefined behavior" | *(keep it; invite evidence that the boundary contradicts the contract)* |
 | Test-by-test "add a test that asserts X" | "This needs test coverage; you decide which cases matter." |
 
-Constraints, intent, and pointers to existing patterns — yes, always.
-Implementation choices belong to the engineer. If a particular shape is
-genuinely load-bearing, pseudocode the *flow*, not the *signatures*, and
-say why it has to be that way.
+Constraints, intent, and pointers to existing patterns are always appropriate.
+An accepted product contract is a constraint, not micromanagement: state promised
+behavior, prohibited side effects, and explicit WONTFIX or undefined behavior.
+Invite the peer to challenge those boundaries with evidence, but do not grant it
+silent authority to expand the product guarantee. Implementation choices belong
+to the engineer. If a particular shape is genuinely load-bearing, pseudocode the
+*flow*, not the *signatures*, and say why it has to be that way.
 
 A leading question (Failure 2) forecloses the peer's *answer*; a muzzling
 brief forecloses the peer's *work*. Same skill, same waste — the
@@ -506,8 +510,9 @@ Before you launch a Pi worker, invoke `claude -p`, or any equivalent, confirm:
       question.
 - [ ] **The brief is intent-level, not diff-level.** Scan it for exact
       strings, full signatures, `old_string`→`new_string` blocks, "do
-      only these N things", "don't touch X", "separate task". Every
-      match → rewrite at intent level or delete. (See Failure 3.)
+      only these N things", "don't touch X", or "separate task". Rewrite
+      implementation muzzles at intent level, but preserve the accepted
+      contract and explicit non-guarantees. (See Failure 3.)
 - [ ] **You can act on either answer.** If the consultation comes back
       "you're wrong about X," do you have the time/context to redirect?
       If not, you're not really consulting — you're confirming.

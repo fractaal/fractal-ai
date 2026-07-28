@@ -3,7 +3,7 @@ name: mission-control
 description: >-
   INVOKE/LOAD WHEN you are the Delegation / Mission Control seat on a change
   big enough to need more than one agent — you hold the North Star, keep
-  everyone tracking it, spawn isolated reviewers, and carry the one question
+  everyone tracking it, dispatch an isolated reviewer, and carry the one question
   "has this strayed from what Ben wanted?". You do NOT write the
   implementation. Load this whether you were spawned into an already-running
   change or asked to start one, whether Ben is at the keyboard or asleep.
@@ -66,10 +66,13 @@ worse than none, because people track it off a cliff.
 
 **There is an acceptance contract, not just a spec.** The spec says *what to
 build*; a separate, written **acceptance contract** says *how you will know it
-is correct*, including the edges. The second is the one everybody skips. In the
-real run it was never written — it had to be reconstructed later from session
-logs, and archaeology is a symptom. If it is not written, write it and get Ben
-to confirm it. Then Execution has a target instead of a vibe.
+is correct*. It names promised behavior, prohibited side effects, explicit
+WONTFIX or undefined behavior, the existing mechanisms to reuse, and a rough
+complexity expectation. The second artifact is the one everybody skips. In the
+real run it was never written and had to be reconstructed later from session
+logs. If it is not written, write it and get Ben to confirm it. Then Execution
+has a bounded target instead of a vibe. If implementation materially exceeds
+the complexity expectation, stop and reassess rather than normalizing growth.
 
 And write each acceptance criterion as a **user-observable OUTCOME**, never an
 endpoint behavior. "A user creates an aria-chat thread and sees the tier
@@ -144,13 +147,12 @@ the reviewers (a background agent whose completion never arrived, or a frozen
 tmux pane), confirm nothing has fallen off the North Star, and nudge anything
 stalled — a `SendMessage` (or `send-keys`) "status? keep going".
 
-**Terminate on convergence — and make convergence crisp.** The loop stops when
-the acceptance contract is met and an independent reviewer has no valid
-findings left. That condition must be one you can actually *check* each tick
-and that is actually *reachable* — a vague or un-meetable "until done" will
-spam-fire the loop dozens of times against a wall (see `writing-goals`, which
-exists because of exactly that failure). One loop, owned by you — do not give
-Execution its own; if it stalls, your sweep is what catches it.
+**Terminate on convergence, and make convergence crisp.** The loop stops when
+the acceptance contract is met and an independent reviewer has no unresolved
+in-contract blockers. That condition must be one you can actually *check* each
+tick and that is actually *reachable*. Rejected findings and valid observations
+outside the contract do not reset convergence. One loop is owned by you; do not
+give Execution its own. If it stalls, your sweep is what catches it.
 
 ### Distrust the work — never take "done" on faith
 
@@ -161,17 +163,16 @@ test fake, and a genuine race that would otherwise have shipped.
 
 ### Nobody grades their own homework
 
-You verify against the contract — and you also spawn **isolated reviewers**
-that never saw Execution's context or each other's, hand them the North Star,
-and let them tear in. **STRONGLY prefer Pi or Codex for those reviewers — Pi
-first.** Both run GPT-5.5, which is exceptional at rigorous code review and
-standards enforcement — your core instructions say exactly that (Cross-Agent
-Collaboration). A peer Claude is the weaker pick for *correctness* review;
-reach for one only when the review is taste- or copy-shaped. Self-review is the
+You verify against the contract and also spawn **one isolated reviewer** by
+default. Hand it the North Star and accepted contract, then let it tear in.
+Prefer Pi for correctness review. A peer Claude is the weaker pick for
+correctness; reach for one when the review is taste- or copy-shaped, or when a
+specific high-risk change justifies cross-model coverage. Self-review is the
 weakest review there is, and your own verification has blind spots too. (See
-`consulting-other-agents`, `code-reviewer`.) Iterate until an independent
-reviewer has **no valid findings left** — not until a pass "looks fine." The
-real run took eleven rounds; that is the process working, not failing.
+`consulting-other-agents`, `code-reviewer`.) The reviewer reports evidence;
+Mission Control adjudicates each item as accepted, rejected, outside contract,
+or escalated. Iterate only on accepted blockers. Never fix a finding merely to
+obtain a `SHIP` verdict.
 
 **A reviewer is only as good as its brief — and the brief is YOURS.** When you
 dispatch a review of a user-facing feature, the brief MUST: (a) name the
@@ -195,18 +196,17 @@ genuine hunch earns its own targeted agent — fine — but a hunch-check is
 ADDITIVE: at least one agent always reviews open and un-steered. Hunches get
 some of the review budget, never all of it.
 
-### NON-NEGOTIABLE: map every code path before any review
+### NON-NEGOTIABLE: map the accepted feature path before review
 
-A diff shows what CHANGED, not what the change TOUCHES. Before any review
-round you produce — or dispatch an Explore agent to produce — a **code-path
-map**: `grep`-derived, not memory. Every entry point that reaches the changed
-behaviour; every caller of every function touched — **and for each caller,
-what it assumes about the function's contract** (return shape, failure modes,
-ordering, idempotency; e.g., side-effects ordered assuming the call couldn't
-fail, return value used unconditionally assuming no null); every writer and
-reader of every piece of state the change depends on — **including code NOT
-in the diff**. No map, no review. The reviewers are pointed at the map, not
-the diff.
+A diff shows what CHANGED, not what the change TOUCHES. Before review, produce
+or dispatch an Explore agent to produce a `grep`-derived code-path map for the
+accepted contract: every entry point that reaches promised behavior; callers
+whose assumptions the change can violate; and readers or writers that can
+change the required outcome or trigger a prohibited side effect, including
+code not in the diff. Do not expand the map into unrelated cleanup or stronger
+guarantees merely because the repository contains adjacent paths. Reviewers
+are pointed at the map and may inspect beyond it, but must classify discoveries
+against the contract.
 
 This is the step that does not get skipped when the lesson is not fresh,
 because it is an ARTIFACT — you have it or you do not, and "I traced it in my
@@ -234,7 +234,7 @@ The principles above (Pi-first, Socratic briefing, code-path map, question the c
    - **Context block:** pointer to the North Star (full design, NOT a summary), commit SHA + one-line summary, step number in the plan, what the implementer reported (verbatim, so the reviewer can compare claim vs. reality)
    - **Target block:** isolated review worktree path; explicit "don't touch the implementer worktree"
    - **Socratic question block:** per the principles in "Nobody grades their own homework" — questions not answers, user's first action as trace start, follow paths outside the diff, question the acceptance criteria
-   - **Output block:** explicit VERDICT requirement — `VERDICT: SHIP` / `SHIP WITH FIXES` / `HOLD` — each maps to a clear next action (see #6 below)
+   - **Output block:** explicit verdict requirement: `VERDICT: SHIP`, `SHIP WITH FIXES`, or `STOP: reassess architecture`. Each maps to a clear next action (see #6 below).
 
 4. **Reuse the reviewer pane across rounds.** Same Pi reviewer for Step N initial review, Step N fix re-review, Step N+1, Step N+1 fix re-review, etc. Context preserved across rounds = cheaper, better-informed reviews. Re-warming a fresh reviewer per commit means re-reading the North Star every time — wasteful and slower. Don't kill the pane between steps; per `tmux-workers`, the interactive REPL keeps full context across follow-ups — that's why you ran it interactive in the first place.
 
@@ -245,19 +245,19 @@ The principles above (Pi-first, Socratic briefing, code-path map, question the c
    **Then crisscross the findings:**
 
    - **Phase 1 (independent):** brief Pi and Claude reviewers identically and in parallel. They each produce findings on the commit without knowing about each other.
-   - **Phase 2 (cross-validate):** once both have reported, pipe each reviewer's findings into the OTHER reviewer with "your peer reviewer reported these findings — sanity-check them. Confirm, reject with reasoning, or extend." Findings that survive both reviewers seeing them are the ones the implementer acts on; findings that one reviewer rejects with reasoning get dropped or escalated to Mission Control judgment.
-   - **Phase 3 (synthesize):** Mission Control combines the cross-validated findings into a single fix brief for the implementer. Validated-by-both findings ship; rejected findings get logged with the rejection reasoning (in case a later turn proves them right after all).
+   - **Phase 2 (cross-validate):** once both have reported, give each reviewer's findings to the OTHER reviewer with "your peer reviewer reported these findings; sanity-check them. Confirm, reject with reasoning, or extend." Cross-validation tests factual and technical validity. It does not decide product scope.
+   - **Phase 3 (synthesize):** Mission Control combines the cross-validated findings, then adjudicates each against the accepted contract. Accepted blockers become the fix brief. Rejected and outside-contract findings remain logged with rationale. A finding surviving two reviewers does not automatically expand the product guarantee.
 
    Why crisscross beats raw parallel: reviewers occasionally surface findings that sound right but aren't (false positives — they read the diff wrong, missed a sibling that already handles the concern, applied a pattern that doesn't fit the context). A second reviewer with code authority probing the first's claims weeds these out before they reach the implementer. Cheap insurance against "Pi/Claude said X, so I made Pi rewrite, so Step N+1 was delayed for nothing."
 
-   **Default to crisscross for any commit that materially changes code or logic** — anywhere semantics/behavior need to remain preserved through a refactor, or any non-trivial change. Empirically (across one session's data, 3 crisscross runs): each run produced at least one finding that one reviewer caught and the other missed; one Claude factual error was caught by Pi via Phase 2. Both halves earn their slot. Reserve **Pi-only** for genuinely trivial commits: pure cleanup, docs-only, test-only, single-line mechanical changes, deletions with no callers — anything where blast radius is structurally minimal and a single reviewer can comprehensively verify. The judgment call to skip crisscross has to be defended; the default isn't "is it big enough?" but "is it small enough?"
+   Do NOT default to crisscross. One strong Pi reviewer is enough for ordinary non-trivial changes. Add the second cross-model pass only for the single highest-risk commit in a broad change, unfamiliar security or infrastructure work, unusually wide cross-service migration, or an explicit user request. The extra reviewer needs a named risk, not a generic desire for more confidence.
 
-6. **VERDICT-driven follow-up — no soft landings:**
-   - `SHIP` — dispatch the implementer to the next step. Done.
-   - `SHIP WITH FIXES` — relay the specific issues verbatim; implementer commits a NEW commit on top of the reviewed SHA (not `--amend`, per `git-commit-convention`); recreate the review worktree pinned to the new SHA; re-review with a narrower brief (reviewer keeps context from first round, so brief focuses just on whether the gap closed).
-   - `HOLD` — escalate to Ben via `/notify`. Do NOT proceed silently or relay a HOLD to the implementer as if it were a SHIP-with-fixes; a `HOLD` is a Mission-Control-level decision point, not a workflow nudge.
+6. **VERDICT-driven follow-up, with adjudication:**
+   - `SHIP`: proceed when there are no unresolved in-contract blockers. Outside-contract observations may remain documented.
+   - `SHIP WITH FIXES`: classify every item before relaying it. Contract violations go to Execution. Supported boundary challenges go to Ben for a product decision before anyone expands or narrows the contract. Reject factual errors and record outside-contract observations without implementing them. Execution fixes only accepted contract violations, commits a new commit on top of the reviewed SHA rather than amending, and receives a focused re-review of those blockers.
+   - `STOP: reassess architecture`: escalate to Ben via `/notify` only when concrete evidence shows the architecture cannot satisfy the accepted contract without fundamental redesign. Do not use STOP for an ordinary boundary decision or turn it into routine implementation churn.
 
-7. **Weigh each finding against the project's stated philosophy before relaying.** Reviewers can drift into generic priors that contradict explicit project invariants (the canonical example: a reviewer flagging "this over-logs" against a project whose `CLAUDE.md` explicitly says "log generously, no silent failures"). Read the project's `CLAUDE.md` / `AGENTS.md` / equivalent BEFORE synthesizing review findings, and drop or push back on findings that contradict explicit project rules. Reviewers can be wrong; the project's stated rules win. Make the project's philosophy part of the brief context too — points reviewers at the file rather than relying on them to find it. The specific over-log/under-log example aside, the general principle: project rules trump reviewer priors during synthesis.
+7. **Weigh each finding against the accepted contract and project philosophy before relaying.** Reviewers can drift into generic priors that contradict explicit project invariants or ask for guarantees Ben did not request. Read the project's `CLAUDE.md`, `AGENTS.md`, or equivalent before synthesizing findings. Reviewers can be wrong; the accepted contract and project rules win unless concrete evidence proves the boundary incoherent. Make both part of the brief context rather than relying on the reviewer to infer them.
 
 ### Keep the thread recoverable outside your context
 
