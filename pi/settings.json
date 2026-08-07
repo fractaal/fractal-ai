@@ -20,7 +20,7 @@
     "npm:@fractaal/pi-goal-x@0.20.0",
     "npm:@fractaal/pi-cross-agent-memory@0.3.0",
     "npm:@fractaal/pi-directive-roots@0.1.0",
-    "npm:@fractaal/pi-claude-bridge@1.6.2-fractal.1"
+    "npm:@fractaal/pi-claude-bridge@1.6.5-fractal.0"
   ],
   "vstack": {
     "extensionManager": {
