@@ -1,19 +1,21 @@
 # Pi
 
-Pi-specific configuration and extensions for `~/.fractal-ai`.
+Pi-specific configuration, system prompt, and extensions for `~/.fractal-ai`.
 
 Deployed by `deploy/install.sh` / `install.ps1`:
 
 | Source | Target |
 |---|---|
 | `pi/settings.json` | `~/.pi/agent/settings.json` |
+| `pi/SYSTEM.md` | `~/.pi/agent/SYSTEM.md` |
 | `DEPLOYED-INSTRUCTIONS.md` | `~/.pi/agent/AGENTS.md` |
 | `skills/` | `~/.agents/skills` (shared by Codex Desktop and Pi) |
 | `pi/extensions/` | `~/.pi/agent/extensions` |
 | `pi/bin/` | `~/.local/bin` |
 
-`auth.json`, sessions, npm/git package caches, and other mutable runtime state stay under
-`~/.pi/agent/` and are not tracked here. Shared skills intentionally do not live under
+`pi/SYSTEM.md` replaces Pi's stock base prompt; Pi still appends loaded project instructions,
+skills, and the current working directory. `auth.json`, sessions, npm/git package caches, and
+other mutable runtime state stay under `~/.pi/agent/` and are not tracked here. Shared skills intentionally do not live under
 `~/.pi/agent/skills` anymore because Pi also scans `~/.agents/skills`; keeping both paths
 produces duplicate skill entries.
 

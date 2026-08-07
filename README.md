@@ -2,7 +2,7 @@
 
 Personal AI agent configuration and skills for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [OpenCode](https://github.com/sst/opencode), Gemini, Augment, and [Pi](https://pi.dev).
 
-A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported tools, a portable `skills/` directory provides reusable, tool-invokable capabilities that any compatible agent can pick up, `claude/` holds Claude Code-specific artifacts (settings, hooks, statusline), and `pi/` holds Pi-specific settings and extensions.
+A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported tools, a portable `skills/` directory provides reusable, tool-invokable capabilities that any compatible agent can pick up, `claude/` holds Claude Code-specific artifacts (settings, hooks, statusline), and `pi/` holds Pi-specific settings, system prompt, and extensions.
 
 ## Structure
 
@@ -17,8 +17,9 @@ A single `DEPLOYED-INSTRUCTIONS.md` drives shared context across all supported t
 │   ├── hooks/                  # PreToolUse / Stop / PostToolUse hook scripts
 │   ├── statusline-command.sh   # Statusline (NASApunk ECAM display)
 │   └── sync-agents.sh          # Bridges select skills into ~/.claude/agents/
-├── pi/                         # Pi-specific settings and extensions
+├── pi/                         # Pi-specific settings, system prompt, and extensions
 │   ├── settings.json           # Portable Pi user settings
+│   ├── SYSTEM.md               # Portable replacement for Pi's base system prompt
 │   └── extensions/             # Pi TypeScript extensions
 ├── codex/                      # Codex-specific
 │   └── config.toml             # Portable Codex settings (merged into ~/.codex/config.toml, not symlinked)
@@ -77,11 +78,12 @@ The install scripts symlink into the following locations, backing up any existin
 | `claude/hooks/` | `~/.claude/hooks` |
 | `claude/statusline-command.sh` | `~/.claude/statusline-command.sh` |
 | `pi/settings.json` | `~/.pi/agent/settings.json` |
+| `pi/SYSTEM.md` | `~/.pi/agent/SYSTEM.md` |
 | `pi/extensions/` | `~/.pi/agent/extensions` |
 
 `claude/settings.json` is the single source of truth for portable Claude Code config — env vars, permissions, plugins, preferences, **and** the hooks + statusLine. Command strings use `~/...` paths so the same file works on any machine without a render step (Claude Code spawns hooks with `shell:true`, and `/bin/sh` tilde-expands the leading `~` at runtime).
 
-`pi/settings.json` is the single source of truth for portable Pi user settings, including pinned Pi packages. Pi runtime state (`auth.json`, sessions, npm/git package caches) stays under `~/.pi/agent/` and is not tracked here. Shared skills live in `~/.agents/skills`, which Codex Desktop creates/uses and Pi also scans; the installer removes legacy fractal-ai symlinks at `~/.codex/skills` and `~/.pi/agent/skills` to avoid duplicate skill entries. Pi 0.75.1 intentionally has no built-in MCP support, so this repo installs Ben's pinned `fractaal/pi-extension` fork to bridge normal MCP config files into direct Pi tools without blocking Pi startup.
+`pi/settings.json` is the single source of truth for portable Pi user settings, including pinned Pi packages. `pi/SYSTEM.md` replaces Pi's stock base prompt while Pi continues to append loaded project instructions, skills, and the current working directory. Pi runtime state (`auth.json`, sessions, npm/git package caches) stays under `~/.pi/agent/` and is not tracked here. Shared skills live in `~/.agents/skills`, which Codex Desktop creates/uses and Pi also scans; the installer removes legacy fractal-ai symlinks at `~/.codex/skills` and `~/.pi/agent/skills` to avoid duplicate skill entries. Pi 0.75.1 intentionally has no built-in MCP support, so this repo installs Ben's pinned `fractaal/pi-extension` fork to bridge normal MCP config files into direct Pi tools without blocking Pi startup.
 
 `codex/config.toml` is the source of truth for portable Codex settings (model, approval/sandbox posture, `[features]`, `[notice]`, env policy). It is **merged**, not symlinked: `install.sh` (`ensure_codex_config`) overlays these keys into `~/.codex/config.toml` via `tomlkit` (needs `uv`), leaving the file's per-machine/runtime sections untouched — `[projects.*]` trust paths, `[marketplaces.*]`, `[plugins.*]`, `[hooks.state.*]`, Codex-Desktop's `node_repl`, `[tui.*]`. A symlink is wrong here because that file co-mingles portable prefs with private per-machine state (and Codex rewrites it constantly). The merge rebuilds root-scalars-before-tables so a newly added top-level key can't get reparented under a preceding table. Re-running is safe; a timestamped `.bak` is written each run.
 

@@ -224,6 +224,7 @@ $claudeStatuslineSource = Join-Path $FractalAiHome 'claude/statusline-command.sh
 
 # Pi-specific sources
 $piSettingsSource = Join-Path $FractalAiHome 'pi/settings.json'
+$piSystemPromptSource = Join-Path $FractalAiHome 'pi/SYSTEM.md'
 $piExtensionsSource = Join-Path $FractalAiHome 'pi/extensions'
 $piBinSource = Join-Path $FractalAiHome 'pi/bin'
 
@@ -268,10 +269,14 @@ if (Test-Path -Path $claudeStatuslineSource -PathType Leaf) {
     Link-FractalItem -Source $claudeStatuslineSource -Target (Join-Path (Join-Path $HOME '.claude') 'statusline-command.sh')
 }
 
-# Pi-only: settings.json, extensions, helper bin scripts
+# Pi-only: settings.json, SYSTEM.md, extensions, helper bin scripts
 if (Test-Path -Path $piSettingsSource -PathType Leaf) {
     Link-FractalItem -Source $piSettingsSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'settings.json')
     Ensure-PiMcpBridgeCache
+}
+
+if (Test-Path -Path $piSystemPromptSource -PathType Leaf) {
+    Link-FractalItem -Source $piSystemPromptSource -Target (Join-Path (Join-Path (Join-Path $HOME '.pi') 'agent') 'SYSTEM.md')
 }
 
 if (Test-Path -Path $piExtensionsSource -PathType Container) {

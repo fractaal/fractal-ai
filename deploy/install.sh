@@ -541,6 +541,7 @@ claude_statusline_source="$FRACTAL_AI_HOME/claude/statusline-command.sh"
 
 # ── Pi-specific sources ───────────────────────────────────────────────
 pi_settings_source="$FRACTAL_AI_HOME/pi/settings.json"
+pi_system_prompt_source="$FRACTAL_AI_HOME/pi/SYSTEM.md"
 pi_extensions_source="$FRACTAL_AI_HOME/pi/extensions"
 pi_bin_source="$FRACTAL_AI_HOME/pi/bin"
 
@@ -584,10 +585,14 @@ if [[ -f "$claude_statusline_source" ]]; then
   link_item "$claude_statusline_source" "$HOME/.claude/statusline-command.sh"
 fi
 
-# ── Pi-only: settings.json, extensions ────────────────────────────────
+# ── Pi-only: settings.json, SYSTEM.md, extensions ─────────────────────
 if [[ -f "$pi_settings_source" ]]; then
   link_item "$pi_settings_source" "$HOME/.pi/agent/settings.json"
   ensure_pi_mcp_bridge_cache
+fi
+
+if [[ -f "$pi_system_prompt_source" ]]; then
+  link_item "$pi_system_prompt_source" "$HOME/.pi/agent/SYSTEM.md"
 fi
 
 if [[ -d "$pi_extensions_source" ]]; then
