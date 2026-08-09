@@ -71,7 +71,15 @@ summary_parts=()
 [[ "$ahead" -gt 0 ]] && summary_parts+=("$ahead unpushed commit(s)")
 IFS=' + '; summary="${summary_parts[*]}"; IFS=$' \t\n'
 
-reason=$(cat <<EOF
+# NOTE: assigned via `read -d ''` rather than `$(cat <<EOF ...)` on purpose —
+# same reason as claude/hooks/auto-rename-session.sh. A heredoc nested inside
+# command substitution makes bash scan the body while hunting the closing `)`,
+# so prose that is fine in a normal heredoc breaks the script: an apostrophe
+# ("don't") trips the quote scanner, and under bash 3.2 (macOS /bin/bash) a `#`
+# after a `(` on the same line — e.g. "(or #nocommit)" — is taken as a comment,
+# swallowing the `)` and unbalancing the substitution. This form keeps the body
+# fully literal. `|| true` because read returns 1 when it hits EOF without NUL.
+read -r -d '' reason <<EOF || true
 fractal-ai standing rule (AGENTS.md): "Push frequently — ideally after every coherent change. […] The default posture is a clean working tree and an in-sync origin/main."
 
 This Stop is blocked because: $summary.
@@ -90,6 +98,5 @@ Resolve before stopping:
 
 Do not chain unrelated new work after committing — once the tree is clean and pushed, stop normally.
 EOF
-)
 
 jq -n --arg reason "$reason" '{"decision":"block","reason":$reason}'
