@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.80.5",
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-sol",
+  "lastChangelogVersion": "0.83.0-fractal.4",
+  "defaultProvider": "claude-bridge",
+  "defaultModel": "claude-opus-5",
   "defaultThinkingLevel": "xhigh",
   "steeringMode": "all",
   "followUpMode": "all",
