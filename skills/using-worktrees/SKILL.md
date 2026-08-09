@@ -33,22 +33,22 @@ Use this workflow before:
 - Spawning subagents, tmux workers, background agents, or parallel workers that may edit repo files.
 - Running broad refactors, dependency upgrades, migrations, or multi-step verification that could leave local artifacts.
 
-Each worker that edits files gets its own worktree unless the user explicitly asks several agents to collaborate in the same checkout — with one exception: sequential chunks of a single feature share one worktree (see below).
+Each worker that edits files gets its own worktree unless the user explicitly asks several agents to collaborate in the same checkout, with one exception: sequential chunks of a single feature share one worktree (see below).
 
 ## Multi-Chunk Features Share One Worktree
 
 The "each worker gets its own worktree" default above is correct for
 *unrelated* parallel work. It is wrong for *sequential chunks of one
-feature* — separate pieces of work that will land together in a single
+feature*: separate pieces of work that will land together in a single
 merge to the main branch.
 
-When one feature is decomposed into multiple chunks — handed to the same
-or different workers, one after another — pick the location ONCE, before
+When one feature is decomposed into multiple chunks, handed to the same
+or different workers one after another, pick the location ONCE, before
 the first chunk starts, and keep every chunk there.
 
 The failure mode if you don't: chunk 1 lands in the primary checkout.
 Chunk 2's worker, correctly following this skill, branches its own
-worktree off the main branch — but the main branch does not have chunk
+worktree off the main branch, but the main branch does not have chunk
 1's changes yet (they are still uncommitted in the primary checkout). So
 chunk 2 is built on a base that is missing chunk 1. Merging chunk 2 then
 lands it *without* chunk 1, and any coupling between them breaks: chunk 2
@@ -61,12 +61,12 @@ as one feature?** If yes:
 
 - Create ONE worktree for the whole feature, up front, named for the
   feature: `.worktrees/<feature-name>/`.
-- Brief every chunk — the first one included — to work in that exact
+- Brief every chunk, including the first, to work in that exact
   path, on that one branch.
 - Merge once, at the end.
 
 If chunk 1 has already landed somewhere by the time you notice the
-split, fix it before the next chunk starts — either commit chunk 1 and
+split, fix it before the next chunk starts: either commit chunk 1 and
 branch the shared worktree off the new HEAD, or run every remaining
 chunk in the same checkout chunk 1 used. Chunks drifting across
 locations is the failure; do not let it stand and plan to "sort it out
@@ -117,10 +117,23 @@ When briefing a repo-editing worker, include:
 
 Do not spawn a worker into the primary checkout for repo edits unless an exception applies.
 
-## Finishing
+## Finishing and Reaping Worktrees
 
 Before saying the task is complete:
 
 - Report the worktree path and branch used, or the exception used.
 - Verify changes from inside the worktree that contains them.
-- Leave cleanup to the user unless they explicitly ask you to remove the worktree.
+- Reap the task worktree in the same completion flow once its work is merged, explicitly abandoned, or otherwise no longer needed. Worktrees often contain dependency trees and build output, so leaving finished ones behind consumes substantial disk.
+- Before removal, verify all three conditions:
+  1. `git status --short` is clean.
+  2. Every task commit is reachable from a retained branch, normally `origin/main`, or the user explicitly approved abandoning it.
+  3. No active worker, process, or session is using the worktree.
+- Remove it from the parent repository, not from inside the worktree:
+  ```bash
+  git worktree remove .worktrees/<task-slug>
+  git worktree prune
+  ```
+- Delete the local task branch only when it is merged and no longer needed. Do not delete remote branches unless the user asks or repository automation owns that cleanup.
+- If the worktree is dirty, unmerged, active, or explicitly retained, do not force-remove it. Report the exact blocker and path.
+
+Do not hand routine cleanup back to the user. Reaping finished task worktrees is the default completion behavior.
