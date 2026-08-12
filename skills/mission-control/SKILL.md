@@ -109,67 +109,83 @@ stale-pane polling, completion comes to you; tmux buys the shared/inspectable
 surface and cross-harness reach, at the cost of that friction. This section is
 the judgement, not the keystrokes.
 
-### Trust the worker — let it cook
+### Trust the worker: let it cook
 
 Brief Execution at **intent**, with the whole story, then give it room. Do not
 hover. Do not check it every few minutes. Do not pre-decide its decomposition.
 This is the half of the seat you will get wrong: you can see the whole board,
 so you feel you should steer every move. In the real run Ben had to physically
-push the orchestrator off the implementer — *"let it cook."* If you are reading
+push the orchestrator off the implementer: *"let it cook."* If you are reading
 Execution's output more than you are reading the North Star, you are in the
 wrong mode. (See `consulting-other-agents` Failure 3, and core Principle #4.)
 
-### Watch Execution asynchronously — not by hovering, not by blocking
+> **Trust but verify means verify the coherent artifact when it is ready, not continuously supervise the worker.**
 
-You still need to know the instant Execution finishes a turn — without sitting
-on it. For a **Claude** executor this is built in: spawn it `run_in_background`
-and its task-completion notification wakes you when the turn lands; `SendMessage`
-both delivers the next brief and is its wake — no listener to wire. For a
-**tmux** executor, put an async listener on its pane (`wait-for.sh <agent>
-<pane>` under the Monitor tool, or an edge-triggered Monitor loop) and reach it
-by sending into the pane with `send-keys-then-enter.sh`; trade pane ids when you
-pair up. Either way: while you wait, do your own work — not "still waiting"
-turns — and **push the next brief rather than assume Execution noticed**; a push
-always lands. (For the tmux send / capture / wait helpers, see `tmux-workers`.)
+A transcript read is an exception, not a heartbeat. Inspect mid-flight only
+when Execution requests a decision, reports a blocker, misses its expected
+completion signal, or concrete evidence suggests drift. Do not manufacture a
+reason to inspect merely because the worker has been quiet.
 
-### A periodic liveness backstop — behind the listeners
+### Keep parallel work parallel
+
+Mission Control ceremony is not an ownership boundary. Run independent
+investigations, repositories, and implementation surfaces concurrently when
+their worktrees and file ownership make that safe. Shared files may require one
+writer for that seam, but they do not justify stopping unrelated lanes. Do not
+serialize workers merely so each increment can be reviewed before the next
+starts.
+
+### Watch Execution asynchronously: not by hovering, not by blocking
+
+You still need to know when Execution finishes a turn without sitting on it.
+For a native executor, use its task-completion event. For a cross-harness or
+shared-pane executor, use one sparse edge-triggered listener. Do not manually
+poll the transcript between events. While you wait, do your own work, not
+"still waiting" turns. Deliver the next brief after the previous turn lands;
+do not send duplicate status nudges just to create activity. (For shared-pane
+send, capture, and wait helpers, see `tmux-workers`.)
+
+### A periodic liveness backstop: behind the listeners
 
 The async listener is event-driven: it fires when Execution cleanly goes idle.
-But events get missed — a pane dies, a wait times out, an agent stalls
-*without* ever emitting an idle transition. So set one **catch-all loop**
-behind the listeners: a recurring self-wakeup (`/loop` with an interval,
-`ScheduleWakeup`, or `CronCreate` — whichever your harness exposes).
+But events get missed: a pane dies, a wait times out, or an agent stalls without
+emitting an idle transition. So set one catch-all loop behind the listeners: a
+recurring self-wakeup (`/loop` with an interval, `ScheduleWakeup`, or
+`CronCreate`, whichever the harness exposes).
 
-Keep it a **backstop, not the engine.** The listeners do the fast event work;
-this only sweeps for stalls *between* events, so the interval is long —
-20-30 minutes, a heartbeat, not a metronome. Each tick: check on Execution and
-the reviewers (a background agent whose completion never arrived, or a frozen
-tmux pane), confirm nothing has fallen off the North Star, and nudge anything
-stalled — a `SendMessage` (or `send-keys`) "status? keep going".
+Keep it a **backstop, not the engine.** The listener does the fast event work;
+the sweep only catches missing events, so its interval is long, normally 20 to
+30 minutes. A sweep first checks compact task or pane state. Open a transcript
+only when that state indicates a missed event, blocker, or stall. If the worker
+is healthy, leave it alone.
 
-**Terminate on convergence, and make convergence crisp.** The loop stops when
-the acceptance contract is met and an independent reviewer has no unresolved
-in-contract blockers. That condition must be one you can actually *check* each
-tick and that is actually *reachable*. Rejected findings and valid observations
-outside the contract do not reset convergence. One loop is owned by you; do not
-give Execution its own. If it stalls, your sweep is what catches it.
+Terminate the loop when the coherent implementation meets the acceptance
+contract and its integrated review has no unresolved in-contract blockers.
+Rejected findings and valid observations outside the contract do not reset
+convergence. One loop is owned by Mission Control; do not give each worker its
+own supervision loop.
 
-### Distrust the work — never take "done" on faith
+### Distrust the completed work: never take "done" on faith
 
-Trust is for the worker; the *artifact* gets verified, every round, against the
-contract. "Done" is a claim until you have traced it (Principle #5). The real
-run caught — by verifying, not trusting — a round left uncommitted, a stale
-test fake, and a genuine race that would otherwise have shipped.
+Trust is for the worker; verification is for the completed artifact. Ordinary
+implementation increments, report definitions, and sequential slices are not
+review rounds. Let the accepted coherent change finish, then trace and verify
+the integrated artifact against the contract. Worker-run tests and local
+checks can happen throughout implementation, but Mission Control does not turn
+each checkpoint into a freeze, provenance ritual, or independent review.
+
+An early independent review gate needs a named reason: an irreversible boundary,
+unusually high blast radius, or an architectural decision that blocks the
+remaining implementation. "This increment is finished" is not a reason.
 
 ### Nobody grades their own homework
 
-You verify against the contract and also spawn **one isolated reviewer** by
-default. Hand it the North Star and accepted contract, then let it tear in.
-Prefer Pi for correctness review. A peer Claude is the weaker pick for
-correctness; reach for one when the review is taste- or copy-shaped, or when a
-specific high-risk change justifies cross-model coverage. Self-review is the
-weakest review there is, and your own verification has blind spots too. (See
-`consulting-other-agents`, `code-reviewer`.) The reviewer reports evidence;
+After the coherent accepted implementation is complete, verify it against the
+contract and spawn **one isolated reviewer** by default. Hand it the North Star,
+accepted contract, integrated artifact, and code-path map, then let it tear in.
+Prefer Pi for correctness review. Self-review
+is the weakest review there is, and your own verification has blind spots too.
+(See `consulting-other-agents`, `code-reviewer`.) The reviewer reports evidence;
 Mission Control adjudicates each item as accepted, rejected, outside contract,
 or escalated. Iterate only on accepted blockers. Never fix a finding merely to
 obtain a `SHIP` verdict.
@@ -217,26 +233,26 @@ one on a path nobody put on the map.
 
 The principles above (Pi-first, Socratic briefing, code-path map, question the criteria) describe WHAT to do. This is HOW you actually dispatch the review without contaminating the implementer's state or wasting the reviewer's capability.
 
-1. **Isolated worktree pinned to the commit's SHA.** Never review in the implementer's worktree — even read-only commands can leave the index in unexpected states (real incident: a reviewer ran `git archive` / `git grep` against the implementer worktree, and the staging area ended up containing a reverse-patch of the commit being reviewed; HEAD was correct, but a subsequent commit there would have been an "Undo Step N"). Pattern per review:
+1. **Isolated worktree pinned to the integrated implementation SHA.** Never review in the implementer's worktree. Even nominally read-only tools can mutate a checkout. A coherent implementation may contain several atomic commits; review its integrated head or explicit base-to-head range after all accepted slices are present.
 
    ```bash
-   git worktree add .worktrees/review-step-N <SHA>
-   # ... tell the reviewer this is its read-only target ...
+   git worktree add .worktrees/review-<feature> <INTEGRATED_SHA>
+   # Tell the reviewer this is its read-only target.
    # After review concludes:
-   git worktree remove .worktrees/review-step-N
+   git worktree remove .worktrees/review-<feature>
    ```
 
-   Explicit in the brief: "your read-only target is `.worktrees/review-step-N`; do NOT touch the implementer's worktree." Isolation makes cross-pane corruption structurally impossible regardless of cause.
+   Explicit in the brief: "your read-only target is `.worktrees/review-<feature>`; do not touch the implementer's worktree." Isolation makes cross-pane corruption structurally impossible regardless of cause.
 
 2. **Tell the reviewer to load `code-reviewer` explicitly in the brief.** Pi runs in its own harness but `~/.fractal-ai/skills/` mirrors to it — Pi can load the skill. The skill provides the smell library + pissed-off-skeptic disposition + the "no consider-language" discipline. Prepend the brief with: *"Load `code-reviewer` skill before reviewing — you are the dispatched isolated reviewer the skill expects."* The skill's own opening dispatches the right mode. Without this line, you get a competent-but-generic review instead of the pattern-matched skeptic.
 
 3. **Brief shape (assembly):**
-   - **Context block:** pointer to the North Star (full design, NOT a summary), commit SHA + one-line summary, step number in the plan, what the implementer reported (verbatim, so the reviewer can compare claim vs. reality)
-   - **Target block:** isolated review worktree path; explicit "don't touch the implementer worktree"
-   - **Socratic question block:** per the principles in "Nobody grades their own homework" — questions not answers, user's first action as trace start, follow paths outside the diff, question the acceptance criteria
-   - **Output block:** explicit verdict requirement: `VERDICT: SHIP`, `SHIP WITH FIXES`, or `STOP: reassess architecture`. Each maps to a clear next action (see #6 below).
+   - **Context block:** pointer to the full North Star, integrated commit SHA or range, one-line summary, and what the implementer reported verbatim so the reviewer can compare claim with reality
+   - **Target block:** isolated review worktree path; explicit instruction not to touch any live implementer or companion checkout
+   - **Socratic question block:** questions rather than answers, the user's first action as trace start, paths outside the diff, and permission to question the acceptance criteria
+   - **Output block:** explicit verdict requirement: `VERDICT: SHIP`, `SHIP WITH FIXES`, or `STOP: reassess architecture`. Each maps to a clear next action in item 6.
 
-4. **Reuse the reviewer pane across rounds.** Same Pi reviewer for Step N initial review, Step N fix re-review, Step N+1, Step N+1 fix re-review, etc. Context preserved across rounds = cheaper, better-informed reviews. Re-warming a fresh reviewer per commit means re-reading the North Star every time — wasteful and slower. Don't kill the pane between steps; per `tmux-workers`, the interactive REPL keeps full context across follow-ups — that's why you ran it interactive in the first place.
+4. **Reuse the reviewer only across remediation rounds.** Keep the same reviewer context for focused re-review of accepted blockers from the integrated review. Do not feed it ordinary implementation increments one by one. Reusing context should make bounded remediation cheaper, not turn the reviewer into a parallel supervisor of Execution.
 
 5. **Crisscross cross-model review on the highest-risk commit only.** For the single biggest-blast-radius commit in a refactor — e.g., the highest-traffic event handler, the file that 80% of prod traffic hits — a second independent reviewer pass is cheap insurance. The pattern:
 
