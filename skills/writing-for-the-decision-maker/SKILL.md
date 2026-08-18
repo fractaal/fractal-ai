@@ -14,6 +14,12 @@ description: Write reports, findings, plans, and status updates for a person
 Write all reports in ASD-STE100. Do not write "near STE" or "STE adjacent".
 Those words let you keep your usual style.
 
+STE controls meaning. STE does not control length. The approved word list
+exists so that one word has one meaning. When a longer word or a longer
+phrase removes doubt, STE uses the longer one.
+
+Do not read this skill as an instruction to write less.
+
 ## The problem
 
 You know all of the details. The reader knows some of the details. You write
@@ -34,18 +40,13 @@ Use these two rules from `first-principles-prompt-engineering`:
 
 Those rules tell you what to do. This skill tells you how to write it.
 
-## How this skill agrees with Directive 0
+## Directive 0 says the same thing
 
 `DEPLOYED-INSTRUCTIONS.md` Directive 0 says "Do not optimize for shortness."
-That instruction and this skill agree. Read them together in this way:
+STE says do not remove words to make the text short. These are one rule.
 
-- Keep every step of the cause. Do not delete a step to make the text short.
-- Do not put two steps in one long sentence. Write two short sentences.
-- Add sentences to make the text clear. Do not add clauses.
-
-Directive 0 controls the content. This skill controls the sentences.
-
-If you must choose, keep the fact and write one more sentence.
+There is no conflict between them. If you think that you found a conflict,
+you have read this skill as a brevity rule. It is not one.
 
 ## Rule 1. Write for a reader who returns to the topic
 
@@ -103,6 +104,7 @@ Change these:
 - Write in the active voice.
 - Use the same word for the same thing each time.
 - Use a number in place of an adjective.
+- Add a sentence when the reader needs one more step of the cause.
 
 Use this test. Remove a fact. Can the reader still disagree with you? If the
 reader cannot, put the fact back.
@@ -124,9 +126,11 @@ show these four items.
 
 ## Rule 5. Tell the reader which parts to skip
 
-Length is part of the problem. Count the parts of the report. If 3 parts of
-10 hold the decision, name those 3 parts. Put the supporting facts in
-separate parts.
+A long report is not a fault. A long report with no map is a fault.
+
+Count the parts of the report. If 3 parts of 10 hold the decision, name
+those 3 parts. Put the supporting facts in their own parts. The reader can
+then read the evidence, or trust it, and the reader chooses which.
 
 ## Rule 6. Do not use this skill as a form
 
@@ -143,17 +147,42 @@ If one paragraph gives the reader the decision, write one paragraph.
 Discord does not show markdown tables. Use bold headings with lists. You can
 also use a code block. Do not change the other rules.
 
-## Language limits
+## Language
+
+The rule is one meaning for one word. The rule is not a word count.
+
+Do these things:
+
+- Give one meaning to each word. Give one word to each meaning.
+- Use the same word for the same thing every time. Do not vary the word to
+  make the text pleasant.
+- Keep the small words: "the", "a", "that", "which".
+- Keep the technical name of a part, however long the name is.
+- Break a group of more than 3 nouns into a phrase. Do this even when the
+  phrase is longer.
 
 Do not use these:
 
 - metaphors
 - idioms
-- a word with more than one meaning
-- more than three nouns together
-- a long sentence with many clauses
+- a word that has more than one meaning
+- a word that names an idea when a word that names a thing will do
 
-Sentence length: maximum 20 words for an instruction. Maximum 25 words for a
-description.
+Do not do these things:
 
-Paragraph length: maximum 6 sentences.
+- Do not remove a word to make the text short.
+- Do not remove "that" or "which" from a sentence.
+- Do not put two ideas in one sentence with many clauses.
+
+Examples. The STE form is longer in each case.
+
+| Usual English | STE |
+|---|---|
+| fuel pressure switch | the switch for the fuel pressure |
+| ensure | make sure that |
+| don't | do not |
+| the value you set | the value that you set |
+
+Sentence length is a warning sign, not a limit. A sentence of 40 words
+usually holds two ideas. Split the ideas into two sentences. Do not cut the
+words.
